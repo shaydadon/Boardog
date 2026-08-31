@@ -41,15 +41,26 @@ python3 -m http.server 8080
 - **GitHub Pages:** הפעילו ב-Settings → Pages → Source: GitHub Actions.
   ה-workflow ב-`.github/workflows/pages.yml` יפרוס אוטומטית בכל push ל-main.
 
+## שני צדדים (חולקים מאגר)
+- **`index.html` — צד הלקוח:** הצ'אט שמתשאל, עונה על שאלות, קובע פגישת היכרות ומשריין תאריכי שהייה.
+- **`owner.html` — אפליקציית הפנסיון:**
+  - **🕒 זמינות** — בעל הפנסיון בוחר אילו ימים ושעות פנויים לפגישות היכרות (קבוע שבועי). הלקוחות רואים רק את המועדים האלה.
+  - **📅 יומן** — מציג את פגישות ההיכרות (📋) ותקופות השהייה (🏠) עם שם הכלב והבעלים, לכל יום.
+  - **🤖 שאל AI** — "כמה כלבים יהיו בפנסיון בין X ל-Y?" — לפי בחירת תאריכים (עובד תמיד), או בשפה חופשית עם Claude (אם מצב AI מופעל).
+
+> באב-טיפוס שני הצדדים מסונכרנים דרך `localStorage` באותו דפדפן. במוצר אמיתי — שרת/DB משותף.
+
 ## מבנה
 ```
-index.html                  ממשק הצ'אט
-assets/css/app.css          עיצוב בסגנון וואטסאפ
-assets/js/kennel.js         נתוני הפנסיון (מוק) + סכימת התשאול
+index.html                  ממשק הצ'אט (לקוח)
+owner.html                  אפליקציית הפנסיון
+assets/css/app.css          עיצוב (וואטסאפ + אפליקציית פנסיון)
+assets/js/store.js          מאגר משותף: זמינות, פגישות, שהיות
+assets/js/kennel.js         פרטי הפנסיון + FAQ + סכימת התשאול
 assets/js/bot.js            מנועי השיחה (מונחה + Claude Tool Use)
-assets/js/app.js            חיווט ה-UI
+assets/js/app.js            חיווט הצ'אט
+assets/js/owner.js          לוגיקת אפליקציית הפנסיון
 worker/boardog-proxy.js     פרוקסי Cloudflare ל-Claude
-worker/wrangler.toml        תצורת ה-Worker
 .github/workflows/pages.yml פריסה ל-GitHub Pages
 ```
 

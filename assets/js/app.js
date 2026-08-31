@@ -60,6 +60,26 @@
     });
   }
 
+  function renderDateRange() {
+    clearQuick();
+    const today = new Date().toISOString().slice(0, 10);
+    const wrap = document.createElement('div');
+    wrap.className = 'daterange';
+    wrap.innerHTML =
+      `<label>מ־ <input type="date" id="dr-from" min="${today}"></label>` +
+      `<label>עד <input type="date" id="dr-to" min="${today}"></label>` +
+      `<button class="quick-btn" id="dr-go">שריין שהייה</button>`;
+    quick.appendChild(wrap);
+    document.getElementById('dr-go').addEventListener('click', () => {
+      const f = document.getElementById('dr-from').value, t = document.getElementById('dr-to').value;
+      if (!f || !t) return;
+      const from = f <= t ? f : t, to = f <= t ? t : f;
+      addMsg(`שהייה: ${from} עד ${to}`, 'user');
+      clearQuick();
+      if (bot) bot.boarding(from, to);
+    });
+  }
+
   function scroll() { chat.scrollTop = chat.scrollHeight; }
 
   // ה-IO שמחבר בין המנוע ל-UI
@@ -73,6 +93,7 @@
         addMsg(m.text, 'bot');
         if (m.choices) renderChoices(m.choices);
         if (m.slots) renderSlots(m.slots);
+        if (m.daterange) renderDateRange();
       }, Math.min(700, 250 + m.text.length * 6));
     },
     typing(on) { showTyping(on); },
@@ -94,7 +115,8 @@
       ['בעלים', a.ownerName], ['כלב', a.dogName], ['גזע', a.breed], ['גיל', a.age],
       ['גודל', a.size], ['מעוקר/מסורס', a.neutered], ['חיסונים', a.vaccinated],
       ['פרעושים/קרציות', a.fleaTick], ['בריאות', a.health], ['עם כלבים', a.withDogs],
-      ['תוקפנות בעבר', a.aggression], ['אוכל', a.food], ['תאריכי שהייה', a.dates],
+      ['תוקפנות בעבר', a.aggression], ['אוכל', a.food],
+      ['תאריכי שהייה', a.boardingStart ? (a.boardingStart + ' – ' + a.boardingEnd) : null],
       ['פגישת היכרות', a.meeting]
     ].filter(r => r[1]);
     const card = document.createElement('div');
@@ -119,10 +141,10 @@
     return null;
   }
   function startScripted() { bot = window.BoarDogBot.ScriptedBot(io); bot.start(); }
-  function startAi(cfg) { bot = window.BoarDogBot.AiBot(io, cfg); bot.start(); }
+  function startAi(cfg) { io.cfg = cfg; bot = window.BoarDogBot.AiBot(io); bot.start(); }
 
   function restart() {
-    chat.innerHTML = ''; clearQuick(); K.reset();
+    chat.innerHTML = ''; clearQuick();
     const cfg = aiProvider();
     setBadge(!!cfg);
     if (cfg) startAi(cfg); else startScripted();
