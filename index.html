@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#075e54" />
+  <title>BoarDog — עוזר קליטה לפנסיון כלבים</title>
+  <meta name="description" content="אב-טיפוס: צ'אטבוט וואטסאפ שמבצע קליטה וקובע פגישת היכרות לפנסיוני כלבים." />
+  <link rel="stylesheet" href="assets/css/app.css" />
+</head>
+<body>
+  <div class="phone">
+    <!-- כותרת בסגנון וואטסאפ -->
+    <header class="wa-head">
+      <div class="wa-ava">🐶</div>
+      <div class="wa-title">
+        <div class="wa-name">פנסיון הכלב המאושר</div>
+        <div class="wa-status"><span id="mode-badge" class="mode-badge">מצב הדגמה</span></div>
+      </div>
+      <button class="wa-icon" id="open-settings" aria-label="הגדרות">⚙️</button>
+    </header>
+
+    <!-- אזור השיחה -->
+    <main class="chat" id="chat"></main>
+
+    <!-- כפתורי מענה מהיר -->
+    <div class="quick" id="quick"></div>
+
+    <!-- שורת הקלדה -->
+    <div class="wa-input">
+      <input id="chat-input" type="text" placeholder="הקלד/י הודעה…" autocomplete="off" />
+      <button id="send" class="wa-send" aria-label="שליחה">➤</button>
+    </div>
+  </div>
+
+  <!-- הגדרות מצב AI -->
+  <div class="settings" id="settings" hidden>
+    <div class="settings-card">
+      <div class="settings-head">
+        <b>מצב AI (Claude)</b>
+        <button id="close-settings" class="wa-icon">✕</button>
+      </div>
+      <p class="settings-hint">בברירת מחדל הבוט רץ במצב הדגמה מונחה (בלי מפתח). כדי להריץ שיחה חכמה אמיתית עם Claude, חברו פרוקסי או מפתח.</p>
+      <label class="fld"><span>כתובת פרוקסי (מומלץ)</span>
+        <input id="ai-proxy" type="url" placeholder="https://boardog-proxy.xxx.workers.dev" /></label>
+      <label class="fld"><span>או מפתח Anthropic (נשמר בדפדפן בלבד)</span>
+        <input id="ai-key" type="password" placeholder="sk-ant-..." /></label>
+      <label class="chk"><input id="ai-enabled" type="checkbox" /> <span>הפעל מצב AI עם המפתח שלמעלה</span></label>
+      <button id="save-ai" class="save-btn">שמור והתחל שיחה</button>
+    </div>
+  </div>
+
+  <script src="assets/js/kennel.js"></script>
+  <script src="assets/js/bot.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+/* =============================================================
+   BoarDog – לוגיקת הצ'אט (ממשק בסגנון וואטסאפ)
+   ============================================================= */
+(function () {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const K = window.BoarDogKennel.KENNEL;
+
+  const chat = $('#chat');
+  const quick = $('#quick');
+  const input = $('#chat-input');
+  const AI_STORE = 'boardog.ai';
+  const load = () => { try { return JSON.parse(localStorage.getItem(AI_STORE) || '{}'); } catch (e) { return {}; } };
+  const save = v => { try { localStorage.setItem(AI_STORE, JSON.stringify(v)); } catch (e) {} };
+
+  let bot = null;
+  let typingEl = null;
+
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const fmt = s => esc(s).replace(/\*(.+?)\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+  const now = () => { const d = new Date(); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); };
+
+  function addMsg(text, who) {
+    clearQuick();
+    const row = document.createElement('div');
+    row.className = 'msg ' + who;
+    row.innerHTML = `<div class="bubble">${fmt(text)}<span class="time">${now()}</span></div>`;
+    chat.appendChild(row);
+    scroll();
+    return row;
+  }
+
+  function showTyping(on) {
+    if (on) {
+      if (typingEl) return;
+      typingEl = document.createElement('div');
+      typingEl.className = 'msg bot';
+      typingEl.innerHTML = `<div class="bubble typing"><span></span><span></span><span></span></div>`;
+      chat.appendChild(typingEl); scroll();
+    } else if (typingEl) { typingEl.remove(); typingEl = null; }
+  }
+
+  function clearQuick() { quick.innerHTML = ''; }
+  function renderChoices(choices) {
+    clearQuick();
+    choices.forEach(c => {
+      const b = document.createElement('button');
+      b.className = 'quick-btn'; b.textContent = c;
+      b.addEventListener('click', () => sendUser(c));
+      quick.appendChild(b);
+    });
+  }
+  function renderSlots(slots) {
+    clearQuick();
+    slots.forEach(s => {
+      const b = document.createElement('button');
+      b.className = 'quick-btn slot'; b.textContent = '📅 ' + s.label;
+      b.addEventListener('click', () => { addMsg(s.label, 'user'); if (bot) bot.pickSlot(s.id); });
+      quick.appendChild(b);
+    });
+  }
+
+  function scroll() { chat.scrollTop = chat.scrollHeight; }
+
+  // ה-IO שמחבר בין המנוע ל-UI
+  const io = {
+    bot(m) {
+      showTyping(false);
+      // דימוי "הקלדה" קצר לתחושת וואטסאפ
+      showTyping(true);
+      setTimeout(() => {
+        showTyping(false);
+        addMsg(m.text, 'bot');
+        if (m.choices) renderChoices(m.choices);
+        if (m.slots) renderSlots(m.slots);
+      }, Math.min(700, 250 + m.text.length * 6));
+    },
+    typing(on) { showTyping(on); },
+    done(summary) { setTimeout(() => renderSummary(summary), 900); },
+    fallback() { startScripted(); }
+  };
+
+  function sendUser(text) {
+    text = (text || '').trim();
+    if (!text) return;
+    addMsg(text, 'user');
+    input.value = '';
+    if (bot) bot.input(text);
+  }
+
+  function renderSummary(summary) {
+    const a = summary.answers || {};
+    const rows = [
+      ['בעלים', a.ownerName], ['כלב', a.dogName], ['גזע', a.breed], ['גיל', a.age],
+      ['גודל', a.size], ['מעוקר/מסורס', a.neutered], ['חיסונים', a.vaccinated],
+      ['פרעושים/קרציות', a.fleaTick], ['בריאות', a.health], ['עם כלבים', a.withDogs],
+      ['תוקפנות בעבר', a.aggression], ['אוכל', a.food], ['תאריכי שהייה', a.dates],
+      ['פגישת היכרות', a.meeting]
+    ].filter(r => r[1]);
+    const card = document.createElement('div');
+    card.className = 'summary-card';
+    card.innerHTML =
+      `<div class="sc-head">📋 סיכום קליטה ל${esc(K.ownerName)} — ${esc(K.name)}</div>` +
+      rows.map(r => `<div class="sc-row"><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('') +
+      `<div class="sc-note">✅ זה מה שבעל הפנסיון מקבל אוטומטית — בלי שיחת טלפון אחת.</div>`;
+    chat.appendChild(card); scroll();
+    clearQuick();
+    const again = document.createElement('button');
+    again.className = 'quick-btn'; again.textContent = '🔄 התחל שיחה חדשה';
+    again.addEventListener('click', restart);
+    quick.appendChild(again);
+  }
+
+  /* ---------- הפעלה ---------- */
+  function aiProvider() {
+    const c = load();
+    if (c.proxyUrl) return { proxyUrl: c.proxyUrl };
+    if (c.enabled && c.key) return { key: c.key };
+    return null;
+  }
+  function startScripted() { bot = window.BoarDogBot.ScriptedBot(io); bot.start(); }
+  function startAi(cfg) { bot = window.BoarDogBot.AiBot(io, cfg); bot.start(); }
+
+  function restart() {
+    chat.innerHTML = ''; clearQuick(); K.reset();
+    const cfg = aiProvider();
+    setBadge(!!cfg);
+    if (cfg) startAi(cfg); else startScripted();
+  }
+
+  function setBadge(ai) {
+    const badge = $('#mode-badge');
+    badge.textContent = ai ? '✨ AI (Claude)' : 'מצב הדגמה';
+    badge.className = 'mode-badge ' + (ai ? 'ai' : '');
+  }
+
+  function init() {
+    // הגדרות AI
+    const cfg = load();
+    $('#ai-proxy').value = cfg.proxyUrl || '';
+    $('#ai-key').value = cfg.key || '';
+    $('#ai-enabled').checked = !!cfg.enabled;
+    $('#save-ai').addEventListener('click', () => {
+      save({ proxyUrl: $('#ai-proxy').value.trim(), key: $('#ai-key').value.trim(), enabled: $('#ai-enabled').checked });
+      $('#settings').hidden = true;
+      restart();
+    });
+    $('#open-settings').addEventListener('click', () => { $('#settings').hidden = false; });
+    $('#close-settings').addEventListener('click', () => { $('#settings').hidden = true; });
+
+    $('#send').addEventListener('click', () => sendUser(input.value));
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') sendUser(input.value); });
+
+    restart();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();

@@ -1,0 +1,84 @@
+:root {
+  --wa-teal: #075e54;
+  --wa-teal-2: #128c7e;
+  --wa-green: #25d366;
+  --wa-bg: #e5ddd5;
+  --wa-out: #dcf8c6;
+  --wa-in: #ffffff;
+  --ink: #111b21;
+  --muted: #667781;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #0b141a; overflow-x: hidden;
+  font-family: "Segoe UI", "Assistant", system-ui, -apple-system, sans-serif; color: var(--ink); }
+
+.phone {
+  max-width: 460px; margin: 0 auto; height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column; background: var(--wa-bg); position: relative;
+  background-image: linear-gradient(rgba(229,221,213,.94), rgba(229,221,213,.94)),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><circle cx='20' cy='20' r='1.2' fill='%23cbbfae'/></svg>");
+}
+
+/* כותרת */
+.wa-head { background: var(--wa-teal); color: #fff; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px calc(10px) ; padding-top: calc(10px + env(safe-area-inset-top)); }
+.wa-ava { width: 40px; height: 40px; border-radius: 50%; background: #ffffff22; display: grid; place-items: center; font-size: 22px; flex: none; }
+.wa-title { flex: 1; min-width: 0; }
+.wa-name { font-weight: 700; font-size: 16px; }
+.wa-status { font-size: 12px; opacity: .9; margin-top: 1px; }
+.mode-badge { display: inline-block; background: #ffffff2b; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.mode-badge.ai { background: #25d366; color: #06331d; }
+.wa-icon { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; padding: 6px; }
+
+/* שיחה */
+.chat { flex: 1; overflow-y: auto; padding: 14px 12px 6px; display: flex; flex-direction: column; gap: 6px; }
+.msg { display: flex; }
+.msg.bot { justify-content: flex-start; }
+.msg.user { justify-content: flex-end; }
+.bubble {
+  max-width: 80%; padding: 7px 10px 6px; border-radius: 10px; font-size: 15px; line-height: 1.42;
+  position: relative; box-shadow: 0 1px 1px rgba(0,0,0,.12); white-space: normal; word-wrap: break-word;
+}
+.msg.bot .bubble { background: var(--wa-in); border-top-right-radius: 3px; }
+.msg.user .bubble { background: var(--wa-out); border-top-left-radius: 3px; }
+.bubble .time { display: block; text-align: end; font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+
+.bubble.typing { display: inline-flex; gap: 4px; padding: 12px 12px; }
+.bubble.typing span { width: 7px; height: 7px; border-radius: 50%; background: #90a4ae; animation: blink 1.2s infinite; }
+.bubble.typing span:nth-child(2) { animation-delay: .2s; }
+.bubble.typing span:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
+
+/* כרטיס סיכום לבעל הפנסיון */
+.summary-card { align-self: center; width: 92%; background: #fff; border-radius: 12px; padding: 12px 14px;
+  margin: 8px 0; box-shadow: 0 3px 10px rgba(0,0,0,.15); border: 1px solid #0000000f; }
+.sc-head { font-weight: 800; font-size: 14px; margin-bottom: 8px; color: var(--wa-teal); }
+.sc-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-top: 1px dashed #eceff1; font-size: 13.5px; }
+.sc-row span { color: var(--muted); }
+.sc-note { margin-top: 10px; font-size: 12px; color: #1a8f4c; background: #eafaf0; padding: 8px; border-radius: 8px; }
+
+/* כפתורי מענה מהיר */
+.quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px; justify-content: flex-end; }
+.quick:empty { display: none; }
+.quick-btn { background: #fff; color: var(--wa-teal-2); border: 1px solid #b9e5d8; border-radius: 999px;
+  padding: 7px 13px; font-size: 13.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.quick-btn:active { transform: scale(.96); }
+.quick-btn.slot { border-color: #cfe8ff; color: #0b6bcb; }
+
+/* שורת הקלדה */
+.wa-input { display: flex; gap: 8px; align-items: center; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: #f0f0f0; }
+.wa-input input { flex: 1; border: none; border-radius: 999px; padding: 11px 14px; font-size: 15px; font-family: inherit; outline: none; }
+.wa-send { width: 44px; height: 44px; border-radius: 50%; border: none; background: var(--wa-teal-2); color: #fff; font-size: 18px; cursor: pointer; flex: none; }
+.wa-send:active { transform: scale(.94); }
+
+/* הגדרות */
+.settings { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: grid; place-items: center; padding: 18px; z-index: 20; }
+.settings[hidden] { display: none; }
+.settings-card { width: 100%; max-width: 420px; background: #fff; border-radius: 16px; padding: 16px; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.settings-head .wa-icon { color: var(--muted); }
+.settings-hint { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+.fld { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; font-size: 13px; font-weight: 600; }
+.fld input { border: 1px solid #d5dbdf; border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 14px; }
+.save-btn { width: 100%; background: var(--wa-teal-2); color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; }
