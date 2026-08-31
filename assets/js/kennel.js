@@ -5,7 +5,7 @@
 (function (global) {
   'use strict';
 
-  const KENNEL = { name: 'פנסיון הכלב המאושר', ownerName: 'רועי' };
+  const KENNEL = { name: 'הפנסיון של ג׳רי', ownerName: 'שי' };
 
   /* ---------- מאגר ידע על הפנסיון (לשאלות פתוחות) ---------- */
   KENNEL.info = {

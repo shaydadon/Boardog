@@ -7,7 +7,7 @@
   const S = window.BoarDogStore;
   const $ = s => document.querySelector(s);
   const pad = n => String(n).padStart(2, '0');
-  const KENNEL_NAME = 'פנסיון הכלב המאושר · רועי';
+  const KENNEL_NAME = 'הפנסיון של ג׳רי · שי';
   const HOURS = [8, 10, 12, 14, 16, 18, 20];
   const DOW = S.DOW;
   let viewDate = new Date();
