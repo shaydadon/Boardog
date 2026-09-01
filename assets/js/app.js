@@ -22,13 +22,25 @@
   let pending = null;    // הכפתורים/קלט שהיו על המסך אחרונים
   let doneFlag = false;
   let restoring = false;
+  let lastInboxTs = 0;   // חותמת ההודעה האחרונה מהבעלים שכבר הוצגה
   function persist() {
     try {
       localStorage.setItem(SESS, JSON.stringify({
-        mode: bot ? bot.mode : null, transcript, pending, done: doneFlag,
+        mode: bot ? bot.mode : null, transcript, pending, done: doneFlag, lastInboxTs,
         bot: (bot && bot.getState) ? bot.getState() : null
       }));
     } catch (e) {}
+  }
+  // הודעות שהבעלים שלח (שריון/ביטול) → מופיעות בצ'אט הלקוח
+  function drainInbox() {
+    const S = window.BoarDogStore;
+    if (!S || !S.inboxSince) return;
+    const msgs = S.inboxSince(lastInboxTs);
+    if (!msgs.length) return;
+    msgs.forEach(m => addMsg(m.text, 'bot'));
+    lastInboxTs = msgs[msgs.length - 1].ts;
+    persist();
+    scroll();
   }
   function clearSession() { try { localStorage.removeItem(SESS); } catch (e) {} }
 
@@ -169,6 +181,7 @@
     clearSession();
     chat.innerHTML = ''; clearQuick();
     transcript = []; pending = null; doneFlag = false;
+    lastInboxTs = Date.now(); // התעלמות מהודעות בעלים ישנות בשיחה חדשה
     const cfg = aiProvider();
     setBadge(!!cfg);
     if (cfg) startAi(cfg); else startScripted();
@@ -185,6 +198,7 @@
   function resume(session) {
     transcript = Array.isArray(session.transcript) ? session.transcript : [];
     doneFlag = !!session.done;
+    lastInboxTs = session.lastInboxTs || 0;
     const cfg = aiProvider();
     setBadge(!!cfg);
     // מרנדרים מחדש את ההודעות הקודמות
@@ -200,6 +214,7 @@
     else if (p && p.slots) renderSlots(p.slots);
     else if (p && p.daterange) renderDateRange();
     if (doneFlag) addRestartButton();
+    drainInbox(); // הודעות בעלים שהגיעו בזמן שהצ'אט היה סגור
   }
 
   function setBadge(ai) {
@@ -224,6 +239,11 @@
 
     $('#send').addEventListener('click', () => sendUser(input.value));
     input.addEventListener('keydown', e => { if (e.key === 'Enter') sendUser(input.value); });
+
+    // עדכון חי: כשהבעלים שולח הודעה (טאב אחר) → מופיעה בצ'אט מיד
+    window.addEventListener('storage', (e) => { if (e.key === 'boardog.inbox') drainInbox(); });
+    // סנכרון ענן החזיר נתונים → ייתכן שיש הודעות חדשות בתיבה
+    document.addEventListener('boardog:sync', () => drainInbox());
 
     // אם יש סשן שמור עם היסטוריה — ממשיכים אותו; אחרת מתחילים חדש
     let saved = null;

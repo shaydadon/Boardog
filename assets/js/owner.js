@@ -140,18 +140,18 @@
       }));
   }
 
-  // הודעת ביטול ללקוח. אם הוגדרה כתובת Worker → שולח וואטסאפ אמיתי; אחרת מדמה.
+  // הודעה ללקוח: בדמו → צ'אט הלקוח (תיבת דואר משותפת); במוצר → וואטסאפ דרך ה-Worker.
   const NOTIFY_KEY = 'boardog.notifyUrl';
   const notifyUrl = () => { try { return localStorage.getItem(NOTIFY_KEY) || ''; } catch (e) { return ''; } };
-  function notifyCancel(rec, text) {
-    if (!rec || !rec.phone) return;
-    const url = notifyUrl();
-    const body = `שלום 🐾 עדכון מ${KENNEL_NAME}: ${text}. לכל שאלה אנחנו כאן.`;
-    if (url) {
-      fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone: rec.phone, text: body }) }).catch(() => {});
-    } else {
-      try { console.log('[BoarDog] (דמו) הודעת ביטול ללקוח', rec.phone, '—', body); } catch (e) {}
+  function notifyCustomer(rec, body) {
+    try { S.pushCustomerMsg(body); } catch (e) {}          // דמו — מופיע בצ'אט הלקוח
+    if (rec && rec.phone) {                                 // מוצר אמיתי — וואטסאפ
+      const url = notifyUrl();
+      if (url) fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone: rec.phone, text: body }) }).catch(() => {});
     }
+  }
+  function notifyCancel(rec, text) {
+    notifyCustomer(rec, `שלום 🐾 עדכון מ${KENNEL_NAME}: ${text}. לכל שאלה אנחנו כאן.`);
   }
 
   function refreshDay(date) { renderCalendar(); showDay(date, S.meetingsOn(date), S.boardingsOn(date)); }
@@ -189,6 +189,7 @@
       const start = f <= t ? f : t, end = f <= t ? t : f;
       const rec = S.addBoarding({ dogName: meeting.dogName, ownerName: meeting.ownerName, start, end, meetingId: meeting.id, phone: meeting.phone });
       if (rec && rec.id) seen.board.add(rec.id); // מונע התראה כפולה על פעולה שהבעלים עצמו ביצע
+      notifyCustomer(meeting, `שלום ${meeting.ownerName || ''}! 🎉 התאריכים שלך ב${KENNEL_NAME} אושרו ושוריינו: ${start} → ${end}. מחכים ל${meeting.dogName || 'כלב'} 🐶`);
       toast('התאריכים שוריינו — נשלחה הודעה ללקוח ✓');
       renderCalendar();
       showDay(date, S.meetingsOn(date), S.boardingsOn(date));

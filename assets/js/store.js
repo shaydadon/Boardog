@@ -8,7 +8,7 @@
 (function (global) {
   'use strict';
 
-  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile' };
+  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile', inbox: 'boardog.inbox' };
   const load = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
@@ -124,6 +124,14 @@
     meetingsAwaitingDates() {
       return Store.meetings().filter(m => !Store.meetingFulfilled(m.id));
     },
+
+    // ---- תיבת דואר ללקוח (בדמו): הודעות מהבעלים → צ'אט הלקוח ----
+    pushCustomerMsg(text) {
+      const list = load(K.inbox, []);
+      list.push({ id: uid(), text: text, ts: Date.now() });
+      save(K.inbox, list.slice(-50));
+    },
+    inboxSince(ts) { return load(K.inbox, []).filter(m => m.ts > (ts || 0)); },
 
     reset() { [K.meet, K.board].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); }
   };
