@@ -48,7 +48,47 @@ python3 -m http.server 8080
   - **📅 יומן** — מציג את פגישות ההיכרות (📋) ותקופות השהייה (🏠) עם שם הכלב והבעלים, לכל יום.
   - **🤖 שאל AI** — "כמה כלבים יהיו בפנסיון בין X ל-Y?" — לפי בחירת תאריכים (עובד תמיד), או בשפה חופשית עם Claude (אם מצב AI מופעל).
 
-> באב-טיפוס שני הצדדים מסונכרנים דרך `localStorage` באותו דפדפן. במוצר אמיתי — שרת/DB משותף.
+> שני הצדדים חולקים מאגר בזמן אמת דרך **Supabase** (ראו "ארכיטקטורה" למטה). ללא רשת — האפליקציה ממשיכה לעבוד מקומית מ-`localStorage`.
+
+## ארכיטקטורה: מצב אמת משותף (Supabase)
+
+היום הצ'אט של הלקוח רץ **בדפדפן**. **הצד לקוח יהיה בסופו של דבר וואטסאפ אמיתי** —
+הלקוח ישלח הודעה למספר הוואטסאפ של הפנסיון, ואותה לוגיקת קליטה תרוץ **בשרת**.
+`index.html` נשאר כ**סימולטור/דמו** של חוויית הוואטסאפ, לפיתוח ולהדגמות.
+
+**Supabase הוא "מקור האמת" המשותף** שכל הצדדים מדברים איתו — זו התשתית שמאפשרת
+את המעבר לוואטסאפ בלי לשכתב את הליבה:
+
+```
+   לקוח בוואטסאפ  ──►  Webhook (Cloudflare Worker) ──┐
+                                                      ├──►  Supabase  ◄──  דשבורד הבעלים
+   בוט Claude (בשרת) ◄───────────────────────────────┘   (זמינות · פגישות · שהיות)      (owner.html)
+        ▲
+        └─ index.html = סימולטור לחוויית הוואטסאפ (אותה לוגיקה, בדפדפן)
+```
+
+**מה כבר קיים (`assets/js/cloud.js`):**
+- מאגר משותף אחד לפנסיון (`KENNEL_ID`) בטבלאות `availability` / `meetings` / `boardings`.
+- עטיפת פעולות הכתיבה של `store.js` → דחיפה ל-Supabase (append-safe לכל טבלה).
+- משיכה ראשונית + זריעת שרת ריק מנתונים מקומיים.
+- **סנכרון בזמן אמת** (`postgres_changes`) — יומן הבעלים מתעדכן ברגע שמתקבלת הזמנה.
+- רשתות ביטחון לרענון: משיכה במעבר-טאב/פוקוס + מרפא-עצמי כל 20 שנ׳; הבוט מרענן
+  מהשרת רגע לפני שהוא מציג מועדים, כך שהרשימה תמיד עדכנית.
+
+**מה יידרש למעבר לוואטסאפ:**
+1. **WhatsApp Business + Meta Cloud API** (או BSP כמו Twilio/360dialog) — מספר שולח + webhook.
+2. **הרחבת ה-Worker** ל: קבלת webhook, הרצת הבוט (Claude Tool Use), קריאה/כתיבה
+   ל-Supabase, ושליחת התשובה חזרה לוואטסאפ. `deriveSlots`/`addMeeting`/`addBoarding` —
+   אותה לוגיקה, פשוט רצה מול Supabase מהשרת במקום מהדפדפן.
+3. אימות webhook (verify token) + טיפול בהודעות מדיה/כפתורים.
+
+**סכימת Supabase (פרוטוטיפ — גישה פתוחה, נהדק בהמשך עם התחברות לבעלים):**
+```sql
+create table availability (id text primary key, config jsonb, updated_at timestamptz default now());
+create table meetings  (id text primary key, kennel text default 'jerry', data jsonb, created_at timestamptz default now());
+create table boardings (id text primary key, kennel text default 'jerry', data jsonb, created_at timestamptz default now());
+-- RLS פתוח לכל הטבלאות + הוספה ל-publication supabase_realtime
+```
 
 ## מבנה
 ```
@@ -56,6 +96,7 @@ index.html                  ממשק הצ'אט (לקוח)
 owner.html                  אפליקציית הפנסיון
 assets/css/app.css          עיצוב (וואטסאפ + אפליקציית פנסיון)
 assets/js/store.js          מאגר משותף: זמינות, פגישות, שהיות
+assets/js/cloud.js          סנכרון בזמן אמת מול Supabase (מקור אמת משותף)
 assets/js/kennel.js         פרטי הפנסיון + FAQ + סכימת התשאול
 assets/js/bot.js            מנועי השיחה (מונחה + Claude Tool Use)
 assets/js/app.js            חיווט הצ'אט
@@ -73,4 +114,5 @@ worker/boardog-proxy.js     פרוקסי Cloudflare ל-Claude
 5. **מסד נתונים** — שמירת לקוחות, כלבים ופגישות + מדיניות פרטיות.
 
 ---
-אב-טיפוס. אין כאן שמירת נתונים בשרת — הכול רץ בדפדפן.
+אב-טיפוס. הנתונים המשותפים (זמינות, פגישות, שהיות) נשמרים ומסונכרנים בזמן אמת
+דרך Supabase; ללא רשת האפליקציה ממשיכה לעבוד מקומית מ-`localStorage`.
