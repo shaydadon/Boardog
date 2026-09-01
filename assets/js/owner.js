@@ -34,6 +34,7 @@
       document.querySelectorAll('.opanel').forEach(p => { p.hidden = p.dataset.panel !== b.dataset.otab; });
       if (b.dataset.otab === 'cal') renderCalendar();
       if (b.dataset.otab === 'profile') loadProfile();
+      if (b.dataset.otab === 'revenue') renderRevenue();
     }));
   }
 
@@ -240,6 +241,51 @@
     } catch (e) { status.textContent = 'שגיאת AI — מלאו ידנית'; }
   }
 
+  /* ---------- גרף הכנסות חודשי ---------- */
+  const MONTHS_HE = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  // מחיר בסיס ליום מזוהה מתוך התיאור (המספר "ליום"/הראשון בטווח סביר)
+  function basePrice() {
+    const d = (S.profile() || {}).description || '';
+    let m = d.match(/(\d{2,5})\s*(?:₪|ש"?ח|שקל)[^\d]{0,6}ל?יום/);      // "120 ₪ ליום"
+    if (!m) m = d.match(/(\d{2,5})\s*(?:₪|ש"?ח|שקל)/);                  // "120 ₪"
+    if (!m) { const nums = (d.match(/\d{2,5}/g) || []).map(Number).filter(n => n >= 30 && n <= 5000); if (nums.length) return nums[0]; }
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function monthlyDogDays() {
+    const map = {};
+    S.boardings().forEach(b => {
+      if (!b.start || !b.end) return;
+      for (let d = new Date(S.parse(b.start)); d <= S.parse(b.end); d.setDate(d.getDate() + 1)) {
+        const ym = d.getFullYear() + '-' + pad(d.getMonth() + 1);
+        map[ym] = (map[ym] || 0) + 1;
+      }
+    });
+    return map;
+  }
+  function renderRevenue() {
+    const price = basePrice();
+    const map = monthlyDogDays();
+    const nowYm = new Date().getFullYear() + '-' + pad(new Date().getMonth() + 1);
+    if (!(nowYm in map)) map[nowYm] = map[nowYm] || 0;
+    const months = Object.keys(map).sort().slice(-12);
+    const sum = $('#rev-summary'), chart = $('#rev-chart');
+    if (!months.length || months.every(m => !map[m])) { sum.innerHTML = ''; chart.innerHTML = '<div class="dd-empty">אין עדיין שהיות להצגה.</div>'; return; }
+    const rows = months.map(ym => { const [y, mo] = ym.split('-'); return { ym, label: MONTHS_HE[+mo - 1] + ' ' + y, dogDays: map[ym], revenue: map[ym] * price }; });
+    const max = Math.max(1, ...rows.map(r => r.revenue));
+    const total = rows.reduce((a, r) => a + r.revenue, 0);
+    const fmt = n => n.toLocaleString('he-IL');
+    sum.innerHTML = price
+      ? `<div class="rev-total">סה"כ בתקופה: <b>${fmt(total)} ₪</b></div><div class="rev-note">הערכה לפי ${fmt(price)} ₪ ליום (מתוך התיאור)</div>`
+      : `<div class="rev-note">לא זוהה מחיר בתיאור — הגרף מציג ימי-כלב. הוסיפו מחיר בטאב "מאפיינים".</div>`;
+    chart.innerHTML = rows.map(r => {
+      const val = price ? `${fmt(r.revenue)} ₪` : `${r.dogDays} ימי-כלב`;
+      const pct = Math.round((price ? r.revenue : r.dogDays) / (price ? max : Math.max(1, ...rows.map(x => x.dogDays))) * 100);
+      return `<div class="rev-row"><div class="rev-label">${r.label}</div>` +
+        `<div class="rev-track"><div class="rev-fill" style="width:${Math.max(pct, 3)}%"></div></div>` +
+        `<div class="rev-val">${val}</div></div>`;
+    }).join('');
+  }
+
   /* ---------- שאילתת "כמה כלבים" ---------- */
   function askRange() {
     const f = $('#ask-from').value, t = $('#ask-to').value;
@@ -331,7 +377,11 @@
     });
     scanNew(true); // זריעה ראשונית ללא התראה
     // רענון חי + התראה כשמגיעה הזמנה חדשה מהשרת (זמן אמת)
-    document.addEventListener('boardog:sync', () => { renderCalendar(); scanNew(false); });
+    document.addEventListener('boardog:sync', () => {
+      renderCalendar(); scanNew(false);
+      const rev = document.querySelector('.opanel[data-panel="revenue"]');
+      if (rev && !rev.hidden) renderRevenue();
+    });
   }
   document.addEventListener('DOMContentLoaded', init);
 })();

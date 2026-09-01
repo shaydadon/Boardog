@@ -152,6 +152,16 @@ html, body { margin: 0; height: 100%; background: #0b141a; overflow-x: hidden;
 .prof-adv summary { cursor: pointer; font-weight: 700; font-size: 13.5px; color: #33475b; }
 .prof-adv code { background: #eef2f6; padding: 1px 5px; border-radius: 5px; font-size: 12px; word-break: break-all; }
 #prof-notify { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid #cdd6e0; border-radius: 10px; background: #fff; margin-bottom: 8px; }
+/* גרף הכנסות */
+.rev-summary { margin-bottom: 12px; }
+.rev-total { font-size: 18px; font-weight: 800; color: #0b3d36; }
+.rev-note { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.rev-chart { display: flex; flex-direction: column; gap: 9px; }
+.rev-row { display: grid; grid-template-columns: 84px 1fr auto; align-items: center; gap: 10px; }
+.rev-label { font-size: 12.5px; color: #33475b; font-weight: 600; white-space: nowrap; }
+.rev-track { background: #eef2f6; border-radius: 8px; height: 20px; overflow: hidden; }
+.rev-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, #128c7e, #25d366); transition: width .4s ease; }
+.rev-val { font-size: 12.5px; font-weight: 700; color: #0b3d36; white-space: nowrap; }
 
 /* שאל AI */
 .ask-range { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

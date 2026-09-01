@@ -28,6 +28,7 @@
       <button class="otab on" data-otab="cal">📅 יומן</button>
       <button class="otab" data-otab="avail">🕒 זמינות</button>
       <button class="otab" data-otab="profile">🏠 מאפיינים</button>
+      <button class="otab" data-otab="revenue">📊 הכנסות</button>
       <button class="otab" data-otab="ask">🤖 שאל AI</button>
     </nav>
 
@@ -71,6 +72,13 @@
           <input type="url" id="prof-notify" placeholder="https://…workers.dev/notify" autocomplete="off" inputmode="url" />
           <button class="save-btn" id="prof-notify-save">שמור כתובת</button>
         </details>
+      </section>
+
+      <!-- הכנסות -->
+      <section class="opanel" data-panel="revenue" hidden>
+        <p class="opanel-hint">הכנסה חודשית משוערת לפי השהיות ביומן ומחיר הבסיס מתוך מאפייני הפנסיון. לחישוב מדויק לפי מדרגות/עונות — טאב "🤖 שאל AI".</p>
+        <div class="rev-summary" id="rev-summary"></div>
+        <div class="rev-chart" id="rev-chart"></div>
       </section>
 
       <!-- שאל AI -->
