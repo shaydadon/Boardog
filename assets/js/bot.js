@@ -26,12 +26,17 @@
     }
 
     function offerSlots() {
-      const slots = S.deriveSlots().slice(0, 5);
-      if (!slots.length) { io.bot({ text: 'כרגע אין מועדים פנויים לפגישת היכרות 😕 נעביר את זה ל' + K.ownerName + ' שיחזור אליך.' }); io.done(summary()); return; }
-      io.bot({
-        text: `תודה ${answers.ownerName || ''}! 🙌 לפני קליטה נקבע פגישת היכרות קצרה עם ${answers.dogName || 'הכלב'}.\nהנה המועדים הפנויים — מה מתאים לך?`,
-        slots: slots.map(s => ({ id: s.id, label: s.label }))
-      });
+      // רענון מהשרת לפני הצגת החלונות כדי שיהיו עדכניים תמיד
+      const show = () => {
+        const slots = S.deriveSlots().slice(0, 5);
+        if (!slots.length) { io.bot({ text: 'כרגע אין מועדים פנויים לפגישת היכרות 😕 נעביר את זה ל' + K.ownerName + ' שיחזור אליך.' }); io.done(summary()); return; }
+        io.bot({
+          text: `תודה ${answers.ownerName || ''}! 🙌 לפני קליטה נקבע פגישת היכרות קצרה עם ${answers.dogName || 'הכלב'}.\nהנה המועדים הפנויים — מה מתאים לך?`,
+          slots: slots.map(s => ({ id: s.id, label: s.label }))
+        });
+      };
+      if (window.BoarDogCloud && window.BoarDogCloud.refresh) window.BoarDogCloud.refresh().then(show, show);
+      else show();
     }
 
     function pickSlot(id) {
@@ -96,8 +101,11 @@
     { name: 'save_summary', description: 'שומר את סיכום הקליטה עבור בעל הפנסיון.', input_schema: { type: 'object', properties: {}, additionalProperties: true } }
   ];
 
-  function runTool(name, input) {
-    if (name === 'get_available_slots') return { slots: S.deriveSlots().slice(0, 6).map(s => ({ id: s.id, label: s.label })) };
+  async function runTool(name, input) {
+    if (name === 'get_available_slots') {
+      if (window.BoarDogCloud && window.BoarDogCloud.refresh) { try { await window.BoarDogCloud.refresh(); } catch (e) {} }
+      return { slots: S.deriveSlots().slice(0, 6).map(s => ({ id: s.id, label: s.label })) };
+    }
     if (name === 'book_meeting') {
       const slot = S.findSlot(input.slot_id);
       if (!slot) return { ok: false, reason: 'מועד לא תקין — קרא שוב ל-get_available_slots' };
@@ -132,10 +140,10 @@
         if (texts) io.bot({ text: texts });
         const toolUses = res.content.filter(b => b.type === 'tool_use');
         if (res.stop_reason === 'tool_use' && toolUses.length) {
-          const results = toolUses.map(tu => {
+          const results = await Promise.all(toolUses.map(async tu => {
             if (tu.name === 'save_summary') lastSummary = tu.input || {};
-            return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(runTool(tu.name, tu.input || {})) };
-          });
+            return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(await runTool(tu.name, tu.input || {})) };
+          }));
           messages.push({ role: 'user', content: results });
           continue;
         }

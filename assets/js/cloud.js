@@ -95,10 +95,21 @@
     } catch (e) {}
   }
 
+  /* ---------- רשתות ביטחון לרענון (משלימות את ה-realtime) ---------- */
+  function startAutoRefresh() {
+    // חזרה לטאב / פוקוס → משיכה מיידית (מושלם למעבר בין טאב הבעלים לטאב הלקוח)
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
+    window.addEventListener('focus', pull);
+    // מרפא-עצמי: משיכה תקופתית אם ה-realtime החמיץ אירוע
+    setInterval(() => { if (!document.hidden) pull(); }, 20000);
+  }
+
   function init() {
     if (!window.supabase || !window.supabase.createClient) return; // אין רשת/CDN – ממשיכים מקומית
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: false } });
-    seedIfEmpty().then(pull).then(subscribe);
+    seedIfEmpty().then(pull).then(() => { subscribe(); startAutoRefresh(); });
   }
+  // חשיפה לרענון יזום (למשל לפני שהבוט מציע חלונות פנויים)
+  window.BoarDogCloud = { refresh: pull };
   document.addEventListener('DOMContentLoaded', init);
 })();
