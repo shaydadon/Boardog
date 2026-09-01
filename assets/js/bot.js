@@ -15,8 +15,19 @@
   /* ---------------- מנוע מונחה ---------------- */
   function ScriptedBot(io) {
     let step = -1;
-    let returning = false, askedDates = false;
+    let returning = false, askedDates = false, lastMeeting = null;
     const answers = {};
+
+    // בדיקת יומן: האם התאריכים פנויים וכמה כלבים כבר בטווח
+    function capacityCheck(start, end) {
+      const r = S.dogsInRange(start, end);
+      const cap = K.capacity || 12;
+      if (r.peak >= cap) {
+        return `בדקתי ביומן 🗓️ — בתאריכים ${start}–${end} הפנסיון כמעט מלא (${r.peak} כלבים בו-זמנית). ${K.ownerName} יבדוק אפשרויות בפגישה.`;
+      }
+      return `בדקתי ביומן 🗓️ — התאריכים ${start}–${end} פנויים 🎉 ` +
+        (r.peak ? `(רשומים כרגע ${r.peak} כלבים אחרים בטווח, יש מקום).` : '(אין כלבים אחרים בטווח כרגע).');
+    }
 
     function ask() {
       step++;
@@ -50,18 +61,26 @@
     function pickSlot(id) {
       const slot = S.findSlot(id);
       if (!slot) { io.bot({ text: 'אופס, המועד נתפס 😅 בוא/י נבחר אחר:', slots: S.deriveSlots().slice(0, 5).map(s => ({ id: s.id, label: s.label })) }); return; }
-      S.addMeeting({ date: slot.date, time: slot.time, dogName: answers.dogName, ownerName: answers.ownerName, breed: answers.breed });
+      lastMeeting = S.addMeeting({ date: slot.date, time: slot.time, dogName: answers.dogName, ownerName: answers.ownerName, breed: answers.breed });
       answers.meeting = slot.label;
-      // לקוח חדש: מסיימים בפגישת ההיכרות. תאריכי השהייה ייקבעו יחד בפגישה.
-      io.bot({ text: `מעולה! ✅ קבעתי פגישת היכרות ל${slot.label}.\nניפגש אז, נכיר את ${answers.dogName || 'הכלב'} 🐶, ואת תאריכי השהייה נסגור יחד עם ${K.ownerName} בפגישה.\nיש עוד משהו שאפשר לעזור בו?` });
-      io.done(summary());
+      // לקוח חדש: קובעים פגישת היכרות, ושואלים אילו תאריכי שהייה לבדוק ביומן
+      io.bot({ text: `מעולה! ✅ קבעתי פגישת היכרות ל${slot.label}.\nכדי שנוכל להיערך — לאילו תאריכים תרצה/י לשריין את השהייה של ${answers.dogName || 'הכלב'}?`, daterange: true });
     }
 
-    // מסלול לקוח חוזר — שריון תאריכים ישיר בצ'אט
     function boarding(start, end) {
-      S.addBoarding({ dogName: answers.dogName || '', ownerName: answers.ownerName, start, end });
-      answers.boardingStart = start; answers.boardingEnd = end;
-      io.bot({ text: `סגור! 🐶 שיריינתי שהייה מ-${start} עד ${end}.\nשלחתי אישור ל${K.ownerName} מהפנסיון — נתראה! 🎾` });
+      if (returning) {
+        // לקוח חוזר — שריון תאריכים ישיר בצ'אט
+        S.addBoarding({ dogName: answers.dogName || '', ownerName: answers.ownerName, start, end });
+        answers.boardingStart = start; answers.boardingEnd = end;
+        io.bot({ text: `סגור! 🐶 שיריינתי שהייה מ-${start} עד ${end}.\nשלחתי אישור ל${K.ownerName} מהפנסיון — נתראה! 🎾` });
+        io.done(summary());
+        return;
+      }
+      // לקוח חדש — בדיקת יומן בלבד; השריון בפועל אחרי פגישת ההיכרות
+      answers.requestedStart = start; answers.requestedEnd = end;
+      if (lastMeeting) { lastMeeting.requestedStart = start; lastMeeting.requestedEnd = end; S.updateMeeting(lastMeeting); }
+      io.bot({ text: capacityCheck(start, end) });
+      io.bot({ text: `📌 שיריון תאריכי השהייה יבוצע לאחר פגישת ההיכרות, אחרי שנכיר את ${answers.dogName || 'הכלב'} ונראה שהכל מסתדר יפה.` });
       io.done(summary());
     }
 
@@ -103,15 +122,17 @@
     'קרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
     '• אם לקוח חדש: אסוף/אספי שם כלב, גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, בריאות/תרופות, ' +
     'התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז. ואז קרא/י ל-get_available_slots והצג/י 3–5 מועדים; כשהלקוח בוחר — book_meeting (slot_id, dog_name, owner_name). ' +
-    'לאחר קביעת פגישת ההיכרות ללקוח חדש — *אל תשריין/י תאריכי שהייה עדיין ואל תקרא/י ל-book_boarding*. ' +
-    'הסבר/י בקצרה שתאריכי השהייה ייקבעו יחד עם ' + K.ownerName + ' בפגישת ההיכרות, קרא/י ל-save_summary וסיים/י בברכה.\n' +
+    'לאחר קביעת פגישת ההיכרות ללקוח חדש: שאל/י לאילו תאריכים הוא צריך את השהייה, וקרא/י ל-check_dates (start_date, end_date, owner_name) בפורמט YYYY-MM-DD כדי לבדוק ביומן אם פנוי וכמה כלבים כבר בטווח — ומסור/י לו את התוצאה. ' +
+    '*אל תשריין/י תאריכי שהייה ואל תקרא/י ל-book_boarding ללקוח חדש.* ' +
+    'ואז אמור/י בדיוק: "שיריון תאריכי השהייה יבוצע לאחר פגישת ההיכרות, אחרי שנכיר את ' + '{dogName}' + ' ונראה שהכל מסתדר יפה." (החלף/י {dogName} בשם הכלב), קרא/י ל-save_summary וסיים/י בברכה.\n' +
     'הלקוח יכול לשאול שאלות פתוחות בכל שלב — ענה/י לפי "מידע על הפנסיון" למטה ואל תמציא/י עובדות.\n\nמידע על הפנסיון:\n' + K.knowledge();
 
   const TOOLS = [
     { name: 'lookup_customer', description: 'בודק אם הפונה הוא לקוח קיים לפי שם הבעלים.', input_schema: { type: 'object', properties: { owner_name: { type: 'string' } }, required: ['owner_name'], additionalProperties: false } },
     { name: 'get_available_slots', description: 'מחזיר מועדי פגישות היכרות פנויים.', input_schema: { type: 'object', properties: {}, additionalProperties: false } },
     { name: 'book_meeting', description: 'משריין פגישת היכרות.', input_schema: { type: 'object', properties: { slot_id: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['slot_id'], additionalProperties: true } },
-    { name: 'book_boarding', description: 'משריין שהייה בפנסיון לטווח תאריכים.', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
+    { name: 'check_dates', description: 'בודק ביומן אם תאריכי שהייה פנויים וכמה כלבים כבר רשומים בטווח (בלי לשריין).', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
+    { name: 'book_boarding', description: 'משריין שהייה בפנסיון לטווח תאריכים (רק ללקוח חוזר).', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
     { name: 'save_summary', description: 'שומר את סיכום הקליטה עבור בעל הפנסיון.', input_schema: { type: 'object', properties: {}, additionalProperties: true } }
   ];
 
@@ -129,6 +150,16 @@
       if (!slot) return { ok: false, reason: 'מועד לא תקין — קרא שוב ל-get_available_slots' };
       S.addMeeting({ date: slot.date, time: slot.time, dogName: input.dog_name || '', ownerName: input.owner_name || '' });
       return { ok: true, booked: slot.label };
+    }
+    if (name === 'check_dates') {
+      const r = S.dogsInRange(input.start_date, input.end_date);
+      const cap = K.capacity || 12;
+      // קישור התאריכים המבוקשים לפגישה האחרונה של אותו בעלים (לאישור בפגישה)
+      const n = String(input.owner_name || '').trim().toLowerCase();
+      const mine = S.meetings().filter(m => String(m.ownerName || '').trim().toLowerCase() === n);
+      const last = mine[mine.length - 1];
+      if (last) { last.requestedStart = input.start_date; last.requestedEnd = input.end_date; S.updateMeeting(last); }
+      return { available: r.peak < cap, dogs_in_range: r.peak, capacity: cap };
     }
     if (name === 'book_boarding') {
       S.addBoarding({ dogName: input.dog_name || '', ownerName: input.owner_name || '', start: input.start_date, end: input.end_date });

@@ -44,6 +44,7 @@
 
 const KENNEL = { name: 'הפנסיון של ג׳רי', ownerName: 'שי' };
 const KENNEL_ID = 'jerry';
+const CAPACITY = 12; // תפוסה מקסימלית בו-זמנית (ניתן לשנות דרך env.CAPACITY)
 
 /* ---------- מאגר ידע (FAQ) לשאלות פתוחות תוך כדי הקליטה ---------- */
 const INFO = {
@@ -111,6 +112,22 @@ function deriveSlots(availability, meetings, days) {
   return out;
 }
 const parseDate = s => { const m = /(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${m[1]}-${m[2]}-${m[3]}` : null; };
+
+// שיא כלבים בו-זמנית בטווח (לבדיקת תפוסה)
+function peakDogs(boardings, start, end) {
+  const s = start <= end ? start : end, e = start <= end ? end : start;
+  let peak = 0;
+  for (let d = new Date(s + 'T00:00:00'); d <= new Date(e + 'T00:00:00'); d.setDate(d.getDate() + 1)) {
+    const dk = dkey(d);
+    const n = (boardings || []).filter(b => dk >= b.start && dk <= b.end).length;
+    if (n > peak) peak = n;
+  }
+  return peak;
+}
+function datesCheckText(peak, cap, start, end) {
+  if (peak >= cap) return `בדקתי ביומן 🗓️ — בתאריכים ${start}–${end} הפנסיון כמעט מלא (${peak} כלבים בו-זמנית). ${KENNEL.ownerName} יבדוק אפשרויות בפגישה.`;
+  return `בדקתי ביומן 🗓️ — התאריכים ${start}–${end} פנויים 🎉 ` + (peak ? `(רשומים כרגע ${peak} כלבים אחרים בטווח, יש מקום).` : '(אין כלבים אחרים בטווח כרגע).');
+}
 
 /* =============================================================
    Supabase (PostgREST) — קריאה/כתיבה מצד השרת
@@ -238,12 +255,35 @@ async function handleMessage(env, state, textRaw) {
       replies.push('אוי, נראה שהמועד הזה נתפס בינתיים 😅 בוא/י נבחר אחר:');
       return offerSlots(env, state, replies);
     }
-    await addMeeting(env, { date: slot.date, time: slot.time, dogName: a.dogName, ownerName: a.ownerName, breed: a.breed, phone: state.phone });
+    const meetingId = await addMeeting(env, { date: slot.date, time: slot.time, dogName: a.dogName, ownerName: a.ownerName, breed: a.breed, phone: state.phone });
     await notifyOwner(env, `🔔 ליד חדש ב${KENNEL.name}\nפגישת היכרות: ${slot.label}\nבעלים: ${a.ownerName || '—'} · כלב: ${a.dogName || '—'} (${a.breed || '—'})\nטלפון: ${state.phone}`);
     a.meeting = slot.label;
-    // לקוח חדש: מסתיים בפגישת ההיכרות. תאריכי השהייה ייקבעו יחד בפגישה.
+    state.meetingId = meetingId;
+    // לקוח חדש: קובעים פגישה, ושואלים אילו תאריכי שהייה לבדוק ביומן (בלי לשריין עדיין)
     replies.push(`מעולה! ✅ קבעתי פגישת היכרות ל${slot.label}.`);
-    replies.push(`ניפגש אז ונכיר את ${a.dogName || 'הכלב'} 🐶. את תאריכי השהייה נסגור יחד עם ${KENNEL.ownerName} בפגישה. נתראה! 🎾`);
+    replies.push(`כדי שנוכל להיערך — לאילו תאריכים תרצה/י לשריין את השהייה של ${a.dogName || 'הכלב'}? (למשל: 2026-09-10 עד 2026-09-14)`);
+    state.phase = 'checkdates';
+    return { state, replies };
+  }
+
+  // ── בדיקת תאריכים מבוקשים (לקוח חדש) — בלי שריון בפועל ──
+  if (state.phase === 'checkdates') {
+    const dates = (text.match(/\d{4}-\d{2}-\d{2}/g) || []).map(parseDate).filter(Boolean);
+    if (dates.length < 2) {
+      replies.push('אפשר לשלוח את טווח התאריכים בפורמט: 2026-09-10 עד 2026-09-14 🗓️');
+      return { state, replies };
+    }
+    const [start, end] = dates[0] <= dates[1] ? [dates[0], dates[1]] : [dates[1], dates[0]];
+    const peak = peakDogs(await loadBoardings(env), start, end);
+    // שומרים את התאריכים המבוקשים על הפגישה (לאישור בפגישה)
+    if (state.meetingId) {
+      const rows = await loadMeetingRows(env);
+      const row = rows.find(r => r.id === state.meetingId);
+      if (row) await updateMeetingData(env, row.id, { ...row.data, requestedStart: start, requestedEnd: end });
+    }
+    await notifyOwner(env, `🗓️ ${a.ownerName || '—'} (${a.dogName || '—'}) מבקש/ת שהייה: ${start} → ${end}. לאישור בפגישת ההיכרות.`);
+    replies.push(datesCheckText(peak, parseInt(env.CAPACITY || CAPACITY, 10), start, end));
+    replies.push(`📌 שיריון תאריכי השהייה יבוצע לאחר פגישת ההיכרות, אחרי שנכיר את ${a.dogName || 'הכלב'} ונראה שהכל מסתדר יפה.`);
     state.phase = 'done';
     return { state, replies };
   }
@@ -302,7 +342,8 @@ const AI_SYSTEM =
 const AI_TOOLS = [
   { name: 'get_available_slots', description: 'מחזיר מועדי פגישות היכרות פנויים.', input_schema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'book_meeting', description: 'משריין פגישת היכרות.', input_schema: { type: 'object', properties: { slot_id: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['slot_id'], additionalProperties: true } },
-  { name: 'book_boarding', description: 'משריין שהייה בפנסיון לטווח תאריכים.', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
+  { name: 'check_dates', description: 'בודק ביומן אם תאריכי שהייה פנויים וכמה כלבים כבר בטווח (בלי לשריין).', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
+  { name: 'book_boarding', description: 'משריין שהייה בפנסיון לטווח תאריכים (רק ללקוח חוזר).', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
   { name: 'save_summary', description: 'שומר את סיכום הקליטה עבור בעל הפנסיון.', input_schema: { type: 'object', properties: {}, additionalProperties: true } }
 ];
 
@@ -311,8 +352,9 @@ function buildSystem(state) {
     return AI_SYSTEM + `\n\n[הקשר] הפונה הוא לקוח קיים (שם: ${state.custName || ''}, כלב: ${state.custDog || ''}). ` +
       'דלג/י על התשאול לגמרי, ברך/י אותו בשמו ובקש/י ישירות את תאריכי השהייה, ואז קרא/י ל-book_boarding ולבסוף save_summary.';
   }
-  return AI_SYSTEM + `\n\n[הקשר] פונה חדש. בצע/י תשאול קצר, קבע/י פגישת היכרות עם book_meeting, ` +
-    `ואז *אל תשריין/י תאריכי שהייה ואל תקרא/י ל-book_boarding* — הסבר/י שהתאריכים ייקבעו בפגישה עם ${KENNEL.ownerName}, קרא/י ל-save_summary וסיים/י.`;
+  return AI_SYSTEM + `\n\n[הקשר] פונה חדש. בצע/י תשאול קצר, קבע/י פגישת היכרות עם book_meeting. ` +
+    `אחר כך שאל/י לאילו תאריכים הוא צריך שהייה וקרא/י ל-check_dates כדי לבדוק ביומן ולמסור לו אם פנוי וכמה כלבים בטווח. ` +
+    `*אל תשריין/י תאריכי שהייה ואל תקרא/י ל-book_boarding.* ואז אמור/י: "שיריון תאריכי השהייה יבוצע לאחר פגישת ההיכרות, אחרי שנכיר את הכלב ונראה שהכל מסתדר יפה", קרא/י ל-save_summary וסיים/י.`;
 }
 async function callClaude(env, messages, system) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -337,6 +379,20 @@ async function runToolAI(env, name, input, state) {
     await addMeeting(env, { date: slot.date, time: slot.time, dogName: input.dog_name || '', ownerName: input.owner_name || '', phone: state.phone });
     await notifyOwner(env, `🔔 ליד חדש ב${KENNEL.name}\nפגישת היכרות: ${slot.label}\nבעלים: ${input.owner_name || '—'} · כלב: ${input.dog_name || '—'}\nטלפון: ${state.phone}`);
     return { ok: true, booked: slot.label };
+  }
+  if (name === 'check_dates') {
+    const s = parseDate(input.start_date), e = parseDate(input.end_date);
+    if (!s || !e) return { ok: false, reason: 'תאריכים לא תקינים — נדרש פורמט YYYY-MM-DD' };
+    const [start, end] = s <= e ? [s, e] : [e, s];
+    const peak = peakDogs(await loadBoardings(env), start, end);
+    // שמירת התאריכים המבוקשים על הפגישה האחרונה של אותו טלפון (לאישור בפגישה)
+    const rows = await loadMeetingRows(env);
+    const mine = rows.filter(r => r.data && r.data.phone === state.phone);
+    const last = mine[mine.length - 1];
+    if (last) await updateMeetingData(env, last.id, { ...last.data, requestedStart: start, requestedEnd: end });
+    await notifyOwner(env, `🗓️ ${(last && last.data.ownerName) || '—'} מבקש/ת שהייה: ${start} → ${end}. לאישור בפגישה.`);
+    const cap = parseInt(env.CAPACITY || CAPACITY, 10);
+    return { available: peak < cap, dogs_in_range: peak, capacity: cap };
   }
   if (name === 'book_boarding') {
     const s = parseDate(input.start_date), e = parseDate(input.end_date);

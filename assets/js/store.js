@@ -62,6 +62,12 @@
     },
     removeMeeting(id) { save(K.meet, Store.meetings().filter(m => m.id !== id)); },
     removeBoarding(id) { save(K.board, Store.boardings().filter(b => b.id !== id)); },
+    // עדכון רשומת פגישה קיימת (למשל הוספת תאריכים מבוקשים)
+    updateMeeting(rec) {
+      if (!rec || !rec.id) return rec;
+      save(K.meet, Store.meetings().map(m => m.id === rec.id ? Object.assign({}, m, rec) : m));
+      return rec;
+    },
 
     // האם תאריך (Date) נמצא בתוך טווח שהייה
     boardingsOn(date) {

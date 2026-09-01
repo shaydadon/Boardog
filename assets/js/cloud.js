@@ -34,6 +34,9 @@
   const _addBoarding = S.addBoarding.bind(S);
   S.addBoarding = function (b) { const rec = _addBoarding(b); pushInsert('boardings', rec); return rec; };
 
+  const _updateMeeting = S.updateMeeting.bind(S);
+  S.updateMeeting = function (rec) { const out = _updateMeeting(rec); const full = S.meetings().find(m => m.id === (rec && rec.id)); if (full) pushInsert('meetings', full); return out; };
+
   const _removeMeeting = S.removeMeeting.bind(S);
   S.removeMeeting = function (id) { _removeMeeting(id); pushDelete('meetings', id); };
 

@@ -92,9 +92,10 @@
     box.innerHTML = `<div class="dd-title">${DOW[date.getDay()]} · ${S.key(date)}</div>` +
       meets.map(m => {
         const done = S.meetingFulfilled(m.id);
+        const req = m.requestedStart ? `<div class="dd-req">🗓️ מבוקש ע״י הלקוח: ${esc(m.requestedStart)} → ${esc(m.requestedEnd)}</div>` : '';
         return `<div class="dd-row meet">📋 פגישת היכרות ${m.time} — ${esc(m.dogName)} (${esc(m.ownerName)}) ` +
           (done ? `<span class="dd-tag ok">✓ תאריכים שוריינו</span>`
-                : `<span class="dd-tag wait">⏳ ממתין לתאריכים</span>` +
+                : `<span class="dd-tag wait">⏳ ממתין לתאריכים</span>` + req +
                   `<div class="dd-reserve"><button class="mini-btn" data-mid="${esc(m.id)}">＋ שריין תאריכי שהייה</button></div>`) +
           `</div>`;
       }).join('') +
@@ -108,10 +109,12 @@
     if (!meeting) return;
     const holder = btn.parentElement;
     const today = new Date().toISOString().slice(0, 10);
+    const vf = meeting.requestedStart ? ` value="${esc(meeting.requestedStart)}"` : '';
+    const vt = meeting.requestedEnd ? ` value="${esc(meeting.requestedEnd)}"` : '';
     holder.innerHTML =
       `<div class="reserve-form">` +
-      `<input type="date" class="rf-from" min="${today}">` +
-      `<input type="date" class="rf-to" min="${today}">` +
+      `<input type="date" class="rf-from" min="${today}"${vf}>` +
+      `<input type="date" class="rf-to" min="${today}"${vt}>` +
       `<button class="mini-btn go">שמור</button></div>`;
     holder.querySelector('.go').addEventListener('click', () => {
       const f = holder.querySelector('.rf-from').value, t = holder.querySelector('.rf-to').value;

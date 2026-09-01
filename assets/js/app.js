@@ -117,6 +117,7 @@
       ['פרעושים/קרציות', a.fleaTick], ['בריאות', a.health], ['עם כלבים', a.withDogs],
       ['תוקפנות בעבר', a.aggression], ['אוכל', a.food],
       ['תאריכי שהייה', a.boardingStart ? (a.boardingStart + ' – ' + a.boardingEnd) : null],
+      ['תאריכים מבוקשים (לאישור בפגישה)', a.requestedStart ? (a.requestedStart + ' – ' + a.requestedEnd) : null],
       ['פגישת היכרות', a.meeting]
     ].filter(r => r[1]);
     const card = document.createElement('div');
