@@ -184,6 +184,7 @@
       let extra = '';
       if (p.description) extra += `\n\nמאפייני הפנסיון (כפי שהגדיר ${K.ownerName}):\n${p.description}`;
       extra += `\n\nתפוסה מרבית: ${S.capacity()} כלבים בו-זמנית. אם בתאריכים המבוקשים כבר מלאה התפוסה — יידע/י את הלקוח שהפנסיון מלא באותם תאריכים.`;
+      if (p.price > 0) extra += `\n\nמחיר ליום: ${p.price} ₪. אם הלקוח שואל על מחיר או מבקש הצעת מחיר — חשב/י לפי מספר הימים המבוקשים (ימים × ${p.price} ₪).`;
       return SYSTEM + extra;
     }
     async function call() {

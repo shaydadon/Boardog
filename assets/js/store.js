@@ -94,13 +94,13 @@
       const s = start <= end ? start : end, e = start <= end ? end : start;
       const overlapping = Store.boardings().filter(b => b.start <= e && b.end >= s);
       // מקסימום כלבים בו-זמנית בטווח
-      let peak = 0; const days = [];
+      let peak = 0, dogDays = 0; const days = [];
       const d0 = parse(s), d1 = parse(e);
       for (let d = new Date(d0); d <= d1; d.setDate(d.getDate() + 1)) {
         const n = Store.boardingsOn(new Date(d)).length;
-        peak = Math.max(peak, n); days.push({ date: key(new Date(d)), n });
+        peak = Math.max(peak, n); dogDays += n; days.push({ date: key(new Date(d)), n });
       }
-      return { dogs: overlapping.map(b => ({ dog: b.dogName, owner: b.ownerName, start: b.start, end: b.end })), total: overlapping.length, peak, days };
+      return { dogs: overlapping.map(b => ({ dog: b.dogName, owner: b.ownerName, start: b.start, end: b.end })), total: overlapping.length, peak, dogDays, days };
     },
 
     // ---- לקוחות חוזרים + מעקב תאריכים אחרי פגישת היכרות ----
