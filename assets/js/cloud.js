@@ -14,7 +14,7 @@
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnem5ld3B3YmNuaGt6aG1wY2trIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxODg2MTQsImV4cCI6MjEwMzc2NDYxNH0.NXvgGh9BhLwlzyhKo1SZWmaVsyqutd1-PUpW1hR8oKI';
   const KENNEL_ID = 'jerry';
 
-  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings' };
+  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile' };
   const S = window.BoarDogStore;
   if (!S) return;
 
@@ -27,6 +27,9 @@
   /* ---------- עטיפת פעולות הכתיבה של המאגר → דחיפה לשרת ---------- */
   const _setAvail = S.setAvailability.bind(S);
   S.setAvailability = function (cfg) { _setAvail(cfg); pushAvail(cfg); };
+
+  const _setProfile = S.setProfile.bind(S);
+  S.setProfile = function (p) { _setProfile(p); pushProfile(p); };
 
   const _addMeeting = S.addMeeting.bind(S);
   S.addMeeting = function (m) { const rec = _addMeeting(m); pushInsert('meetings', rec); return rec; };
@@ -48,6 +51,10 @@
     if (!sb) return;
     try { await sb.from('availability').upsert({ id: KENNEL_ID, config: cfg, updated_at: new Date().toISOString() }, { onConflict: 'id' }); } catch (e) {}
   }
+  async function pushProfile(p) {
+    if (!sb) return;
+    try { await sb.from('kennel_profile').upsert({ id: KENNEL_ID, data: p || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' }); } catch (e) {}
+  }
   async function pushInsert(table, rec) {
     if (!sb || !rec || !rec.id) return;
     try { await sb.from(table).upsert({ id: rec.id, kennel: KENNEL_ID, data: rec }, { onConflict: 'id' }); } catch (e) {}
@@ -61,14 +68,16 @@
   async function pull() {
     if (!sb) return;
     try {
-      const [a, m, b] = await Promise.all([
+      const [a, m, b, p] = await Promise.all([
         sb.from('availability').select('config').eq('id', KENNEL_ID).maybeSingle(),
         sb.from('meetings').select('data').eq('kennel', KENNEL_ID),
-        sb.from('boardings').select('data').eq('kennel', KENNEL_ID)
+        sb.from('boardings').select('data').eq('kennel', KENNEL_ID),
+        sb.from('kennel_profile').select('data').eq('id', KENNEL_ID).maybeSingle()
       ]);
       if (a.data && a.data.config) setLocal(K.avail, a.data.config);
       if (m.data) setLocal(K.meet, m.data.map(r => r.data).filter(Boolean));
       if (b.data) setLocal(K.board, b.data.map(r => r.data).filter(Boolean));
+      if (p.data && p.data.data) setLocal(K.prof, p.data.data);
       emit();
     } catch (e) {}
   }
@@ -94,6 +103,7 @@
         .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, pull)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'boardings' }, pull)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'availability' }, pull)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'kennel_profile' }, pull)
         .subscribe();
     } catch (e) {}
   }

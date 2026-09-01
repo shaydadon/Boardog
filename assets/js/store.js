@@ -8,7 +8,7 @@
 (function (global) {
   'use strict';
 
-  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings' };
+  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile' };
   const load = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
@@ -26,6 +26,11 @@
     DOW, key, parse,
     availability: () => load(K.avail, defaultAvail()),
     setAvailability: (cfg) => save(K.avail, cfg),
+
+    // מאפייני הפנסיון (תיאור חופשי + תפוסה מרבית) — שהבעלים מגדיר
+    profile: () => load(K.prof, {}),
+    setProfile: (p) => save(K.prof, p || {}),
+    capacity() { const c = Store.profile().capacity; return (typeof c === 'number' && c > 0) ? c : 12; },
 
     meetings: () => load(K.meet, []),
     boardings: () => load(K.board, []),

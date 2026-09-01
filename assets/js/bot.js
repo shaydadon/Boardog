@@ -21,7 +21,7 @@
     // בדיקת יומן: האם התאריכים פנויים וכמה כלבים כבר בטווח
     function capacityCheck(start, end) {
       const r = S.dogsInRange(start, end);
-      const cap = K.capacity || 12;
+      const cap = S.capacity();
       if (r.peak >= cap) {
         return `בדקתי ביומן 🗓️ — בתאריכים ${start}–${end} הפנסיון כמעט מלא (${r.peak} כלבים בו-זמנית). ${K.ownerName} יבדוק אפשרויות בפגישה.`;
       }
@@ -153,7 +153,7 @@
     }
     if (name === 'check_dates') {
       const r = S.dogsInRange(input.start_date, input.end_date);
-      const cap = K.capacity || 12;
+      const cap = S.capacity();
       // קישור התאריכים המבוקשים לפגישה האחרונה של אותו בעלים (לאישור בפגישה)
       const n = String(input.owner_name || '').trim().toLowerCase();
       const mine = S.meetings().filter(m => String(m.ownerName || '').trim().toLowerCase() === n);
@@ -174,8 +174,15 @@
     const messages = [];
     let lastSummary = null;
 
+    function dynamicSystem() {
+      const p = S.profile() || {};
+      let extra = '';
+      if (p.description) extra += `\n\nמאפייני הפנסיון (כפי שהגדיר ${K.ownerName}):\n${p.description}`;
+      extra += `\n\nתפוסה מרבית: ${S.capacity()} כלבים בו-זמנית. אם בתאריכים המבוקשים כבר מלאה התפוסה — יידע/י את הלקוח שהפנסיון מלא באותם תאריכים.`;
+      return SYSTEM + extra;
+    }
     async function call() {
-      const payload = { system: SYSTEM, tools: TOOLS, messages };
+      const payload = { system: dynamicSystem(), tools: TOOLS, messages };
       return cfg.proxyUrl ? callProxy(cfg.proxyUrl, payload) : callClaude(cfg.key, payload);
     }
     async function loop() {

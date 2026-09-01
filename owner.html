@@ -20,6 +20,7 @@
     <nav class="otabs" id="otabs">
       <button class="otab on" data-otab="cal">📅 יומן</button>
       <button class="otab" data-otab="avail">🕒 זמינות</button>
+      <button class="otab" data-otab="profile">🏠 מאפיינים</button>
       <button class="otab" data-otab="ask">🤖 שאל AI</button>
     </nav>
 
@@ -41,6 +42,20 @@
         <p class="opanel-hint">בחר/י אילו ימים ושעות פנויים לפגישות היכרות (חוזר בכל שבוע). הלקוחות יראו רק את המועדים האלה.</p>
         <div id="avail-grid"></div>
         <button class="save-btn" id="save-avail">שמור זמינות</button>
+      </section>
+
+      <!-- מאפייני הפנסיון -->
+      <section class="opanel" data-panel="profile" hidden>
+        <p class="opanel-hint">תארו את הפנסיון בחופשיות — הבוט ישתמש בתיאור כדי לענות ללקוחות, והתפוסה תיאכף לפי מה שתגדירו. לדוגמה: "פנסיון ביתי חמים עד 3 כלבים במקביל, ללא כלובים" או "פנסיון עד 40 כלבים עם חצרות, תאי לינה והפרדה לקבוצות לפי התאמה".</p>
+        <textarea id="prof-desc" rows="6" placeholder="כתבו כאן את מאפייני הפנסיון…"></textarea>
+        <div class="prof-row">
+          <label class="prof-cap-l">תפוסה מרבית (כלבים במקביל)
+            <input type="number" id="prof-cap" min="1" max="500" inputmode="numeric" placeholder="למשל 3" />
+          </label>
+          <button class="mini-btn" id="prof-ai">✨ נתח עם AI</button>
+        </div>
+        <button class="save-btn" id="prof-save">שמור מאפיינים</button>
+        <div class="ask-result" id="prof-status"></div>
       </section>
 
       <!-- שאל AI -->

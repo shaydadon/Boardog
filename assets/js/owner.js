@@ -33,6 +33,7 @@
       document.querySelectorAll('.otab').forEach(x => x.classList.toggle('on', x === b));
       document.querySelectorAll('.opanel').forEach(p => { p.hidden = p.dataset.panel !== b.dataset.otab; });
       if (b.dataset.otab === 'cal') renderCalendar();
+      if (b.dataset.otab === 'profile') loadProfile();
     }));
   }
 
@@ -128,6 +129,41 @@
     });
   }
 
+  /* ---------- מאפייני הפנסיון ---------- */
+  function loadProfile() {
+    const p = S.profile() || {};
+    if ($('#prof-desc')) $('#prof-desc').value = p.description || '';
+    if ($('#prof-cap')) $('#prof-cap').value = p.capacity || '';
+  }
+  function saveProfile() {
+    const cap = parseInt($('#prof-cap').value, 10);
+    S.setProfile({ description: $('#prof-desc').value.trim(), capacity: (cap > 0 ? cap : undefined) });
+    toast('המאפיינים נשמרו ✓ הבוט ישתמש בהם');
+  }
+  async function analyzeProfile() {
+    const text = $('#prof-desc').value.trim();
+    const status = $('#prof-status');
+    if (!text) { status.textContent = 'כתבו תיאור קודם'; return; }
+    const cfg = aiCfg();
+    const prov = cfg.proxyUrl ? { proxyUrl: cfg.proxyUrl } : (cfg.enabled && cfg.key ? { key: cfg.key } : null);
+    if (!prov) { status.textContent = 'להפעלת ניתוח AI: פתחו את צ\'אט הלקוח → ⚙️ והפעילו מצב AI.'; return; }
+    status.textContent = 'מנתח…';
+    const system = 'אתה מחלץ מאפייני פנסיון כלבים מטקסט חופשי בעברית. החזר JSON תקין בלבד, ללא טקסט נוסף, ' +
+      'במבנה: {"capacity": <מספר שלם של כלבים במקביל>, "description": "<תקציר נקי וברור של מאפייני הפנסיון לתשובות ללקוחות>"}. ' +
+      'אם לא צוינה תפוסה במפורש — שערו ערך סביר לפי סוג הפנסיון.';
+    try {
+      const res = await callAI(prov, { system, tools: [], messages: [{ role: 'user', content: text }] });
+      const out = (res.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+      const m = out.match(/\{[\s\S]*\}/);
+      const parsed = m ? JSON.parse(m[0]) : null;
+      if (parsed) {
+        if (parsed.capacity) $('#prof-cap').value = parseInt(parsed.capacity, 10) || '';
+        if (parsed.description) $('#prof-desc').value = parsed.description;
+        status.textContent = 'נותח ✓ בדקו ולחצו "שמור מאפיינים"';
+      } else { status.textContent = 'לא הצלחתי לנתח — מלאו ידנית'; }
+    } catch (e) { status.textContent = 'שגיאת AI — מלאו ידנית'; }
+  }
+
   /* ---------- שאילתת "כמה כלבים" ---------- */
   function askRange() {
     const f = $('#ask-from').value, t = $('#ask-to').value;
@@ -204,6 +240,9 @@
     $('#ask-from').value = today; $('#ask-to').value = today;
     $('#ask-go').addEventListener('click', askRange);
     $('#ask-ai-go').addEventListener('click', askAi);
+    loadProfile();
+    $('#prof-save').addEventListener('click', saveProfile);
+    $('#prof-ai').addEventListener('click', analyzeProfile);
     scanNew(true); // זריעה ראשונית ללא התראה
     // רענון חי + התראה כשמגיעה הזמנה חדשה מהשרת (זמן אמת)
     document.addEventListener('boardog:sync', () => { renderCalendar(); scanNew(false); });

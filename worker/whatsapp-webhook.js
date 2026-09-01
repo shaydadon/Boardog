@@ -17,6 +17,7 @@
      SUPABASE_KEY         service_role key (מומלץ) או anon אם RLS פתוח
      ANTHROPIC_API_KEY    (רשות) אם מוגדר — שיחה טבעית עם Claude; אחרת מנוע מונחה
      OWNER_PHONE          (רשות) מספר הבעלים לקבלת התראה על כל ליד/שריון חדש
+     CAPACITY             (רשות) תפוסה מרבית ברירת מחדל (נגזר קודם ממאפייני הפנסיון)
      REMIND_AFTER_HOURS   (רשות) שעות מהפגישה עד תזכורת תאריכים (ברירת מחדל 24)
      GRAPH_VERSION        (רשות) ברירת מחדל v21.0
      MODEL                (רשות) ברירת מחדל claude-opus-5
@@ -172,6 +173,15 @@ async function loadBoardings(env) {
   const rows = await sbGet(env, `boardings?kennel=eq.${KENNEL_ID}&select=data`);
   return rows.map(r => r.data).filter(Boolean);
 }
+async function loadProfile(env) {
+  const rows = await sbGet(env, `kennel_profile?id=eq.${KENNEL_ID}&select=data`);
+  return (rows[0] && rows[0].data) || {};
+}
+function resolveCapacity(env, profile) {
+  const c = profile && profile.capacity;
+  if (typeof c === 'number' && c > 0) return c;
+  return parseInt(env.CAPACITY || CAPACITY, 10) || CAPACITY;
+}
 async function addMeeting(env, rec) {
   const id = uid();
   await sbUpsert(env, 'meetings', { id, kennel: KENNEL_ID, data: { id, ...rec } }, 'id');
@@ -275,6 +285,7 @@ async function handleMessage(env, state, textRaw) {
     }
     const [start, end] = dates[0] <= dates[1] ? [dates[0], dates[1]] : [dates[1], dates[0]];
     const peak = peakDogs(await loadBoardings(env), start, end);
+    const cap = resolveCapacity(env, await loadProfile(env));
     // שומרים את התאריכים המבוקשים על הפגישה (לאישור בפגישה)
     if (state.meetingId) {
       const rows = await loadMeetingRows(env);
@@ -282,7 +293,7 @@ async function handleMessage(env, state, textRaw) {
       if (row) await updateMeetingData(env, row.id, { ...row.data, requestedStart: start, requestedEnd: end });
     }
     await notifyOwner(env, `🗓️ ${a.ownerName || '—'} (${a.dogName || '—'}) מבקש/ת שהייה: ${start} → ${end}. לאישור בפגישת ההיכרות.`);
-    replies.push(datesCheckText(peak, parseInt(env.CAPACITY || CAPACITY, 10), start, end));
+    replies.push(datesCheckText(peak, cap, start, end));
     replies.push(`📌 שיריון תאריכי השהייה יבוצע לאחר פגישת ההיכרות, אחרי שנכיר את ${a.dogName || 'הכלב'} ונראה שהכל מסתדר יפה.`);
     state.phase = 'done';
     return { state, replies };
@@ -347,14 +358,20 @@ const AI_TOOLS = [
   { name: 'save_summary', description: 'שומר את סיכום הקליטה עבור בעל הפנסיון.', input_schema: { type: 'object', properties: {}, additionalProperties: true } }
 ];
 
+function profileBlock(state) {
+  let s = '';
+  if (state.profileDesc) s += `\n\nמאפייני הפנסיון (כפי שהגדיר ${KENNEL.ownerName}):\n${state.profileDesc}`;
+  s += `\n\nתפוסה מרבית: ${state.capacity || CAPACITY} כלבים בו-זמנית. אם בתאריכים המבוקשים התפוסה כבר מלאה — יידע/י את הלקוח שהפנסיון מלא באותם תאריכים.`;
+  return s;
+}
 function buildSystem(state) {
   if (state.returning) {
     return AI_SYSTEM + `\n\n[הקשר] הפונה הוא לקוח קיים (שם: ${state.custName || ''}, כלב: ${state.custDog || ''}). ` +
-      'דלג/י על התשאול לגמרי, ברך/י אותו בשמו ובקש/י ישירות את תאריכי השהייה, ואז קרא/י ל-book_boarding ולבסוף save_summary.';
+      'דלג/י על התשאול לגמרי, ברך/י אותו בשמו ובקש/י ישירות את תאריכי השהייה, ואז קרא/י ל-book_boarding ולבסוף save_summary.' + profileBlock(state);
   }
   return AI_SYSTEM + `\n\n[הקשר] פונה חדש. בצע/י תשאול קצר, קבע/י פגישת היכרות עם book_meeting. ` +
     `אחר כך שאל/י לאילו תאריכים הוא צריך שהייה וקרא/י ל-check_dates כדי לבדוק ביומן ולמסור לו אם פנוי וכמה כלבים בטווח. ` +
-    `*אל תשריין/י תאריכי שהייה ואל תקרא/י ל-book_boarding.* ואז אמור/י: "שיריון תאריכי השהייה יבוצע לאחר פגישת ההיכרות, אחרי שנכיר את הכלב ונראה שהכל מסתדר יפה", קרא/י ל-save_summary וסיים/י.`;
+    `*אל תשריין/י תאריכי שהייה ואל תקרא/י ל-book_boarding.* ואז אמור/י: "שיריון תאריכי השהייה יבוצע לאחר פגישת ההיכרות, אחרי שנכיר את הכלב ונראה שהכל מסתדר יפה", קרא/י ל-save_summary וסיים/י.` + profileBlock(state);
 }
 async function callClaude(env, messages, system) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -391,7 +408,7 @@ async function runToolAI(env, name, input, state) {
     const last = mine[mine.length - 1];
     if (last) await updateMeetingData(env, last.id, { ...last.data, requestedStart: start, requestedEnd: end });
     await notifyOwner(env, `🗓️ ${(last && last.data.ownerName) || '—'} מבקש/ת שהייה: ${start} → ${end}. לאישור בפגישה.`);
-    const cap = parseInt(env.CAPACITY || CAPACITY, 10);
+    const cap = state.capacity || resolveCapacity(env, await loadProfile(env));
     return { available: peak < cap, dogs_in_range: peak, capacity: cap };
   }
   if (name === 'book_boarding') {
@@ -409,10 +426,12 @@ async function runToolAI(env, name, input, state) {
 async function handleMessageAI(env, state, text) {
   if (!Array.isArray(state.messages)) state.messages = [];
   if (/^(התחל|restart|reset|שיחה חדשה)/i.test((text || '').trim())) { state.messages = []; state.summary = null; state.returning = undefined; }
-  // זיהוי לקוח חוזר פעם אחת בתחילת השיחה (לפי טלפון)
+  // זיהוי לקוח חוזר + טעינת מאפייני הפנסיון פעם אחת בתחילת השיחה
   if (state.returning === undefined) {
     const info = await returningInfo(env, state.phone);
     state.returning = info.returning; state.custName = info.ownerName || ''; state.custDog = info.dogName || '';
+    const prof = await loadProfile(env);
+    state.profileDesc = prof.description || ''; state.capacity = resolveCapacity(env, prof);
   }
   state.messages.push({ role: 'user', content: text || '' });
 

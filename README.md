@@ -93,11 +93,19 @@ python3 -m http.server 8080
 
 **סכימת Supabase (פרוטוטיפ — גישה פתוחה, נהדק בהמשך עם התחברות לבעלים):**
 ```sql
-create table availability (id text primary key, config jsonb, updated_at timestamptz default now());
-create table meetings  (id text primary key, kennel text default 'jerry', data jsonb, created_at timestamptz default now());
-create table boardings (id text primary key, kennel text default 'jerry', data jsonb, created_at timestamptz default now());
+create table availability   (id text primary key, config jsonb, updated_at timestamptz default now());
+create table meetings       (id text primary key, kennel text default 'jerry', data jsonb, created_at timestamptz default now());
+create table boardings      (id text primary key, kennel text default 'jerry', data jsonb, created_at timestamptz default now());
+create table kennel_profile (id text primary key, data jsonb, updated_at timestamptz default now());
+create table conversations  (phone text primary key, state jsonb, updated_at timestamptz default now());
 -- RLS פתוח לכל הטבלאות + הוספה ל-publication supabase_realtime
 ```
+
+**מאפייני הפנסיון (מונחה-בעלים):** בטאב "🏠 מאפיינים" ב-`owner.html` הבעלים מתאר את
+הפנסיון בטקסט חופשי (למשל "פנסיון ביתי עד 3 כלבים במקביל" מול "עד 40 כלבים עם חצרות
+והפרדה לקבוצות") ומגדיר **תפוסה מרבית**. כפתור "✨ נתח עם AI" מחלץ את התפוסה והתקציר
+מהטקסט. הפרופיל (ב-`kennel_profile`) מזין את תשובות ה-AI ללקוח **ואוכף תפוסה**: אם
+מוגדר עד 3 כלבים ובתאריכים המבוקשים כבר יש 3 — הפנסיון בתפוסה מלאה.
 
 ## מבנה
 ```
