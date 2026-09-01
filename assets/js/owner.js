@@ -157,6 +157,8 @@
     $('#ask-from').value = today; $('#ask-to').value = today;
     $('#ask-go').addEventListener('click', askRange);
     $('#ask-ai-go').addEventListener('click', askAi);
+    // רענון חי כשמגיעה הזמנה חדשה מהשרת (זמן אמת)
+    document.addEventListener('boardog:sync', () => { renderCalendar(); });
   }
   document.addEventListener('DOMContentLoaded', init);
 })();
