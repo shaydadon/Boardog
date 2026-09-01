@@ -369,7 +369,7 @@ function profileBlock(state) {
   let s = '';
   if (state.profileDesc) s += `\n\nמאפייני הפנסיון (כפי שהגדיר ${KENNEL.ownerName}):\n${state.profileDesc}`;
   s += `\n\nתפוסה מרבית: ${state.capacity || CAPACITY} כלבים בו-זמנית. אם בתאריכים המבוקשים התפוסה כבר מלאה — יידע/י את הלקוח שהפנסיון מלא באותם תאריכים.`;
-  if (state.price > 0) s += `\n\nמחיר ליום: ${state.price} ₪. אם הלקוח שואל על מחיר — חשב/י לפי מספר הימים המבוקשים (ימים × ${state.price} ₪).`;
+  s += `\n\nאם הלקוח שואל על מחיר — חשב/י לפי מדיניות המחירים שבתיאור הפנסיון למעלה (כולל מדרגות/עונות אם צוינו) ומספר הימים המבוקשים.`;
   return s;
 }
 function buildSystem(state) {
@@ -439,7 +439,7 @@ async function handleMessageAI(env, state, text) {
     const info = await returningInfo(env, state.phone);
     state.returning = info.returning; state.custName = info.ownerName || ''; state.custDog = info.dogName || '';
     const prof = await loadProfile(env);
-    state.profileDesc = prof.description || ''; state.capacity = resolveCapacity(env, prof); state.price = prof.price || 0;
+    state.profileDesc = prof.description || ''; state.capacity = resolveCapacity(env, prof);
   }
   state.messages.push({ role: 'user', content: text || '' });
 

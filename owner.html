@@ -55,12 +55,10 @@
       <section class="opanel" data-panel="profile" hidden>
         <p class="opanel-hint">תארו את הפנסיון בחופשיות — הבוט ישתמש בתיאור כדי לענות ללקוחות, והתפוסה תיאכף לפי מה שתגדירו. לדוגמה: "פנסיון ביתי חמים עד 3 כלבים במקביל, ללא כלובים" או "פנסיון עד 40 כלבים עם חצרות, תאי לינה והפרדה לקבוצות לפי התאמה".</p>
         <textarea id="prof-desc" rows="6" placeholder="כתבו כאן את מאפייני הפנסיון…"></textarea>
+        <p class="opanel-hint" style="margin-top:0">כל המידע — כולל <b>מחירים</b> (גם מדרגות/עונות, למשל "120 ₪ ליום, מעל 7 ימים 100 ₪") — נכתב בתיאור למעלה. ה-AI יקרא משם גם לתשובות ללקוח וגם לחישוב הכנסות.</p>
         <div class="prof-row">
           <label class="prof-cap-l">תפוסה מרבית (כלבים במקביל)
             <input type="number" id="prof-cap" min="1" max="500" inputmode="numeric" placeholder="למשל 3" />
-          </label>
-          <label class="prof-cap-l">מחיר ליום (₪)
-            <input type="number" id="prof-price" min="0" max="100000" inputmode="numeric" placeholder="למשל 120" />
           </label>
           <button class="mini-btn" id="prof-ai">✨ נתח עם AI</button>
         </div>

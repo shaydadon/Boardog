@@ -205,17 +205,14 @@
     const p = S.profile() || {};
     if ($('#prof-desc')) $('#prof-desc').value = p.description || '';
     if ($('#prof-cap')) $('#prof-cap').value = p.capacity || '';
-    if ($('#prof-price')) $('#prof-price').value = p.price || '';
     if ($('#prof-notify')) $('#prof-notify').value = notifyUrl();
   }
   function saveProfile() {
     const cap = parseInt($('#prof-cap').value, 10);
-    const price = parseFloat($('#prof-price').value);
     const prev = S.profile() || {};
     S.setProfile(Object.assign({}, prev, {
       description: $('#prof-desc').value.trim(),
-      capacity: (cap > 0 ? cap : undefined),
-      price: (price > 0 ? price : undefined)
+      capacity: (cap > 0 ? cap : undefined)
     }));
     toast('המאפיינים נשמרו ✓ הבוט ישתמש בהם');
   }
@@ -228,8 +225,8 @@
     if (!prov) { status.textContent = 'להפעלת ניתוח AI: פתחו את צ\'אט הלקוח → ⚙️ והפעילו מצב AI.'; return; }
     status.textContent = 'מנתח…';
     const system = 'אתה מחלץ מאפייני פנסיון כלבים מטקסט חופשי בעברית. החזר JSON תקין בלבד, ללא טקסט נוסף, ' +
-      'במבנה: {"capacity": <מספר שלם של כלבים במקביל>, "price": <מחיר ליום ב-₪ אם צוין, אחרת null>, "description": "<תקציר נקי וברור של מאפייני הפנסיון לתשובות ללקוחות>"}. ' +
-      'אם לא צוינה תפוסה במפורש — שערו ערך סביר לפי סוג הפנסיון.';
+      'במבנה: {"capacity": <מספר שלם של כלבים במקביל>, "description": "<תקציר נקי וברור של מאפייני הפנסיון לתשובות ללקוחות, כולל המחירים כפי שנכתבו>"}. ' +
+      'אל תשמיט מחירים או מדרגות מחיר — שמור אותם בתוך ה-description. אם לא צוינה תפוסה במפורש — שערו ערך סביר לפי סוג הפנסיון.';
     try {
       const res = await callAI(prov, { system, tools: [], messages: [{ role: 'user', content: text }] });
       const out = (res.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
@@ -237,7 +234,6 @@
       const parsed = m ? JSON.parse(m[0]) : null;
       if (parsed) {
         if (parsed.capacity) $('#prof-cap').value = parseInt(parsed.capacity, 10) || '';
-        if (parsed.price) $('#prof-price').value = parseFloat(parsed.price) || '';
         if (parsed.description) $('#prof-desc').value = parsed.description;
         status.textContent = 'נותח ✓ בדקו ולחצו "שמור מאפיינים"';
       } else { status.textContent = 'לא הצלחתי לנתח — מלאו ידנית'; }
@@ -266,14 +262,15 @@
     if (!prov) { out.innerHTML = '<div class="dd-empty">להפעלת שאלות חופשיות: פתח/י את צ\'אט הלקוח → ⚙️ והפעל/י מצב AI.</div>'; return; }
     out.innerHTML = '<div class="dd-empty">חושב…</div>';
     const today = S.key(new Date());
-    const price = (S.profile() || {}).price;
-    const priceLine = (price > 0)
-      ? `מחיר ליום בפנסיון: ${price} ₪. לחישוב הכנסה בתקופה: הכפל את total_dog_days במחיר ליום.`
-      : 'מחיר ליום לא הוגדר במאפייני הפנסיון — אם נשאלת על הכנסה, בקש מהבעלים להגדיר מחיר ליום בטאב "מאפיינים".';
+    const desc = (S.profile() || {}).description || '';
+    const priceLine = desc
+      ? 'מדיניות המחירים והמאפיינים של הפנסיון (כפי שכתב הבעלים):\n"' + desc + '"\n' +
+        'כשנשאלת על הכנסה — חשב לפי מדיניות המחירים הזו. count_dogs מחזיר לכל שהייה את התאריכים ואת מספר הימים, וכן סה"כ ימי-כלב; החל את המחיר (כולל מדרגות/עונות אם צוינו) על כל שהייה וסכם.'
+      : 'מאפייני הפנסיון (כולל מחירים) לא הוגדרו — אם נשאלת על הכנסה, בקש מהבעלים למלא אותם בטאב "מאפיינים".';
     const system = 'אתה עוזר לבעל פנסיון כלבים. היום ' + today + '. כשנשאלת כמה כלבים או כמה הכנסה בתקופה, ' +
       'הסק את טווח התאריכים (אם השנה לא צוינה — השנה הנוכחית) וקרא ל-count_dogs עם start_date ו-end_date בפורמט YYYY-MM-DD. ' +
-      priceLine + ' לאחר קבלת התוצאה, ענה בעברית במשפט קצר וברור (כולל סכום ההכנסה ב-₪ אם רלוונטי).';
-    const tools = [{ name: 'count_dogs', description: 'מחזיר כמה כלבים וכמה ימי-כלב (dog-days) בטווח תאריכים, לחישוב תפוסה והכנסה.', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: false } }];
+      priceLine + ' לאחר קבלת התוצאה, ענה בעברית במשפט קצר וברור (כולל סכום ההכנסה ב-₪ אם רלוונטי, ופירוט קצר אם יש מדרגות).';
+    const tools = [{ name: 'count_dogs', description: 'מחזיר את השהיות בטווח תאריכים (עם ימים לכל שהייה) וסה"כ ימי-כלב, לחישוב תפוסה והכנסה.', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: false } }];
     const messages = [{ role: 'user', content: q }];
     try {
       for (let i = 0; i < 4; i++) {
@@ -284,8 +281,8 @@
         if (res.stop_reason === 'tool_use' && tu.length) {
           messages.push({ role: 'user', content: tu.map(t => {
             const r = S.dogsInRange(t.input.start_date, t.input.end_date);
-            const revenue = (price > 0) ? r.dogDays * price : null;
-            return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify({ total: r.total, peak: r.peak, total_dog_days: r.dogDays, price_per_day: price || null, revenue: revenue, dogs: r.dogs }) };
+            const dogs = r.dogs.map(d => Object.assign({}, d, { days: Math.round((S.parse(d.end) - S.parse(d.start)) / 86400000) + 1 }));
+            return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify({ total: r.total, peak: r.peak, total_dog_days: r.dogDays, dogs: dogs }) };
           }) });
           continue;
         }
