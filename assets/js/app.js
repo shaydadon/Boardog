@@ -240,9 +240,9 @@
     $('#send').addEventListener('click', () => sendUser(input.value));
     input.addEventListener('keydown', e => { if (e.key === 'Enter') sendUser(input.value); });
 
-    // עדכון חי: כשהבעלים שולח הודעה (טאב אחר) → מופיעה בצ'אט מיד
+    // עדכון חי: אותו דפדפן (storage), בין מכשירים (boardog:inbox מ-cloud), וסנכרון כללי
     window.addEventListener('storage', (e) => { if (e.key === 'boardog.inbox') drainInbox(); });
-    // סנכרון ענן החזיר נתונים → ייתכן שיש הודעות חדשות בתיבה
+    document.addEventListener('boardog:inbox', () => drainInbox());
     document.addEventListener('boardog:sync', () => drainInbox());
 
     // אם יש סשן שמור עם היסטוריה — ממשיכים אותו; אחרת מתחילים חדש

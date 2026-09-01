@@ -144,7 +144,11 @@
   const NOTIFY_KEY = 'boardog.notifyUrl';
   const notifyUrl = () => { try { return localStorage.getItem(NOTIFY_KEY) || ''; } catch (e) { return ''; } };
   function notifyCustomer(rec, body) {
-    try { S.pushCustomerMsg(body); } catch (e) {}          // דמו — מופיע בצ'אט הלקוח
+    const id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    try { S.pushCustomerMsg(body, id); } catch (e) {}       // אותו דפדפן — מיידי
+    // בין מכשירים — דרך Supabase לפי מזהה הלקוח
+    const cid = rec && rec.customerId;
+    if (cid && window.BoarDogCloud && window.BoarDogCloud.sendCustomerMessage) window.BoarDogCloud.sendCustomerMessage(cid, id, body);
     if (rec && rec.phone) {                                 // מוצר אמיתי — וואטסאפ
       const url = notifyUrl();
       if (url) fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone: rec.phone, text: body }) }).catch(() => {});
@@ -187,7 +191,7 @@
       const f = holder.querySelector('.rf-from').value, t = holder.querySelector('.rf-to').value;
       if (!f || !t) { toast('בחר/י טווח תאריכים'); return; }
       const start = f <= t ? f : t, end = f <= t ? t : f;
-      const rec = S.addBoarding({ dogName: meeting.dogName, ownerName: meeting.ownerName, start, end, meetingId: meeting.id, phone: meeting.phone });
+      const rec = S.addBoarding({ dogName: meeting.dogName, ownerName: meeting.ownerName, start, end, meetingId: meeting.id, phone: meeting.phone, customerId: meeting.customerId });
       if (rec && rec.id) seen.board.add(rec.id); // מונע התראה כפולה על פעולה שהבעלים עצמו ביצע
       notifyCustomer(meeting, `שלום ${meeting.ownerName || ''}! 🎉 התאריכים שלך ב${KENNEL_NAME} אושרו ושוריינו: ${start} → ${end}. מחכים ל${meeting.dogName || 'כלב'} 🐶`);
       toast('התאריכים שוריינו — נשלחה הודעה ללקוח ✓');

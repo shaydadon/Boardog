@@ -125,10 +125,20 @@
       return Store.meetings().filter(m => !Store.meetingFulfilled(m.id));
     },
 
-    // ---- תיבת דואר ללקוח (בדמו): הודעות מהבעלים → צ'אט הלקוח ----
-    pushCustomerMsg(text) {
+    // מזהה לקוח יציב (נוצר פעם אחת) — מצמיד הודעות מהבעלים ללקוח הנכון בין מכשירים
+    customerId() {
+      let id = null;
+      try { id = localStorage.getItem('boardog.customerId'); } catch (e) {}
+      if (!id) { id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); try { localStorage.setItem('boardog.customerId', id); } catch (e) {} }
+      return id;
+    },
+
+    // ---- תיבת דואר ללקוח: הודעות מהבעלים → צ'אט הלקוח (עם דדופ לפי id) ----
+    pushCustomerMsg(text, id) {
       const list = load(K.inbox, []);
-      list.push({ id: uid(), text: text, ts: Date.now() });
+      id = id || uid();
+      if (list.some(m => m.id === id)) return; // כבר קיים — דדופ
+      list.push({ id: id, text: text, ts: Date.now() });
       save(K.inbox, list.slice(-50));
     },
     inboxSince(ts) { return load(K.inbox, []).filter(m => m.ts > (ts || 0)); },

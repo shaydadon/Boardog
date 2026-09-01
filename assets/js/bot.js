@@ -64,7 +64,7 @@
     function pickSlot(id) {
       const slot = S.findSlot(id);
       if (!slot) { io.bot({ text: 'אופס, המועד נתפס 😅 בוא/י נבחר אחר:', slots: S.deriveSlots().slice(0, 5).map(s => ({ id: s.id, label: s.label })) }); return; }
-      lastMeeting = S.addMeeting({ date: slot.date, time: slot.time, dogName: answers.dogName, ownerName: answers.ownerName, breed: answers.breed });
+      lastMeeting = S.addMeeting({ date: slot.date, time: slot.time, dogName: answers.dogName, ownerName: answers.ownerName, breed: answers.breed, customerId: S.customerId() });
       answers.meeting = slot.label;
       // לקוח חדש: קובעים פגישת היכרות, ושואלים אילו תאריכי שהייה לבדוק ביומן
       io.bot({ text: `מעולה! ✅ קבעתי פגישת היכרות ל${slot.label}.\nכדי שנוכל להיערך — לאילו תאריכים תרצה/י לשריין את השהייה של ${answers.dogName || 'הכלב'}?`, daterange: true });
@@ -73,7 +73,7 @@
     function boarding(start, end) {
       if (returning) {
         // לקוח חוזר — שריון תאריכים ישיר בצ'אט
-        S.addBoarding({ dogName: answers.dogName || '', ownerName: answers.ownerName, start, end });
+        S.addBoarding({ dogName: answers.dogName || '', ownerName: answers.ownerName, start, end, customerId: S.customerId() });
         answers.boardingStart = start; answers.boardingEnd = end;
         io.bot({ text: `סגור! 🐶 שיריינתי שהייה מ-${start} עד ${end}.\nשלחתי אישור ל${K.ownerName} מהפנסיון — נתראה! 🎾` });
         io.done(summary());
@@ -151,7 +151,7 @@
     if (name === 'book_meeting') {
       const slot = S.findSlot(input.slot_id);
       if (!slot) return { ok: false, reason: 'מועד לא תקין — קרא שוב ל-get_available_slots' };
-      S.addMeeting({ date: slot.date, time: slot.time, dogName: input.dog_name || '', ownerName: input.owner_name || '' });
+      S.addMeeting({ date: slot.date, time: slot.time, dogName: input.dog_name || '', ownerName: input.owner_name || '', customerId: S.customerId() });
       return { ok: true, booked: slot.label };
     }
     if (name === 'check_dates') {
@@ -165,7 +165,7 @@
       return { available: r.peak < cap, dogs_in_range: r.peak, capacity: cap };
     }
     if (name === 'book_boarding') {
-      S.addBoarding({ dogName: input.dog_name || '', ownerName: input.owner_name || '', start: input.start_date, end: input.end_date });
+      S.addBoarding({ dogName: input.dog_name || '', ownerName: input.owner_name || '', start: input.start_date, end: input.end_date, customerId: S.customerId() });
       return { ok: true, from: input.start_date, to: input.end_date };
     }
     if (name === 'save_summary') return { ok: true };

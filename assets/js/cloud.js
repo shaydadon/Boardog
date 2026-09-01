@@ -99,6 +99,12 @@
   }
 
   /* ---------- זמן אמת ---------- */
+  const MYID = (S.customerId ? S.customerId() : null);
+  async function sendCustomerMessage(customerId, id, text) {
+    if (!sb || !customerId) return;
+    try { await sb.from('customer_messages').insert({ id: id, customer_id: customerId, text: text }); } catch (e) {}
+  }
+
   function subscribe() {
     if (!sb) return;
     try {
@@ -109,6 +115,17 @@
         .on('postgres_changes', { event: '*', schema: 'public', table: 'kennel_profile' }, pull)
         .subscribe();
     } catch (e) {}
+    // הודעות מהבעלים ללקוח הזה (לפי מזהה הלקוח) — מגיעות בזמן אמת גם בין מכשירים
+    if (MYID) {
+      try {
+        sb.channel('cust-' + MYID)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'customer_messages', filter: 'customer_id=eq.' + MYID }, (payload) => {
+            const row = payload.new || {};
+            if (row.text) { S.pushCustomerMsg(row.text, row.id); document.dispatchEvent(new CustomEvent('boardog:inbox')); }
+          })
+          .subscribe();
+      } catch (e) {}
+    }
   }
 
   /* ---------- רשתות ביטחון לרענון (משלימות את ה-realtime) ---------- */
@@ -125,7 +142,7 @@
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: false } });
     seedIfEmpty().then(pull).then(() => { subscribe(); startAutoRefresh(); });
   }
-  // חשיפה לרענון יזום (למשל לפני שהבוט מציע חלונות פנויים)
-  window.BoarDogCloud = { refresh: pull };
+  // חשיפה לרענון יזום + שליחת הודעה ללקוח (מדשבורד הבעלים)
+  window.BoarDogCloud = { refresh: pull, sendCustomerMessage: sendCustomerMessage };
   document.addEventListener('DOMContentLoaded', init);
 })();
