@@ -148,6 +148,10 @@ html, body { margin: 0; height: 100%; background: #0b141a; overflow-x: hidden;
 .prof-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
 .prof-cap-l { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: #33475b; }
 .prof-cap-l input { font: inherit; font-size: 15px; padding: 8px 10px; border: 1px solid #cdd6e0; border-radius: 10px; width: 130px; background: #fff; }
+.prof-adv { margin-top: 16px; border-top: 1px solid #e3e8ee; padding-top: 12px; }
+.prof-adv summary { cursor: pointer; font-weight: 700; font-size: 13.5px; color: #33475b; }
+.prof-adv code { background: #eef2f6; padding: 1px 5px; border-radius: 5px; font-size: 12px; word-break: break-all; }
+#prof-notify { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid #cdd6e0; border-radius: 10px; background: #fff; margin-bottom: 8px; }
 
 /* שאל AI */
 .ask-range { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

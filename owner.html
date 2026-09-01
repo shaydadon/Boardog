@@ -63,6 +63,13 @@
         </div>
         <button class="save-btn" id="prof-save">שמור מאפיינים</button>
         <div class="ask-result" id="prof-status"></div>
+
+        <details class="prof-adv">
+          <summary>⚙️ הגדרות מתקדמות — התראות וואטסאפ ללקוח</summary>
+          <p class="opanel-hint">כתובת ה-Worker לשליחת הודעות ללקוח (ביטולים ועדכונים). השאירו ריק כדי לדמות בלבד. דוגמה: <code>https://boardog-whatsapp.xxx.workers.dev/notify</code> (אפשר להוסיף <code>?token=…</code>).</p>
+          <input type="url" id="prof-notify" placeholder="https://…workers.dev/notify" autocomplete="off" inputmode="url" />
+          <button class="save-btn" id="prof-notify-save">שמור כתובת</button>
+        </details>
       </section>
 
       <!-- שאל AI -->

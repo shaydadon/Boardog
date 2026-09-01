@@ -140,10 +140,18 @@
       }));
   }
 
-  // הודעת ביטול ללקוח. בדמו — מסומן בלוג; במוצר האמיתי נשלח וואטסאפ דרך ה-Worker.
+  // הודעת ביטול ללקוח. אם הוגדרה כתובת Worker → שולח וואטסאפ אמיתי; אחרת מדמה.
+  const NOTIFY_KEY = 'boardog.notifyUrl';
+  const notifyUrl = () => { try { return localStorage.getItem(NOTIFY_KEY) || ''; } catch (e) { return ''; } };
   function notifyCancel(rec, text) {
     if (!rec || !rec.phone) return;
-    try { console.log('[BoarDog] הודעת ביטול ללקוח', rec.phone, '—', text); } catch (e) {}
+    const url = notifyUrl();
+    const body = `שלום 🐾 עדכון מ${KENNEL_NAME}: ${text}. לכל שאלה אנחנו כאן.`;
+    if (url) {
+      fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone: rec.phone, text: body }) }).catch(() => {});
+    } else {
+      try { console.log('[BoarDog] (דמו) הודעת ביטול ללקוח', rec.phone, '—', body); } catch (e) {}
+    }
   }
 
   function refreshDay(date) { renderCalendar(); showDay(date, S.meetingsOn(date), S.boardingsOn(date)); }
@@ -192,6 +200,7 @@
     const p = S.profile() || {};
     if ($('#prof-desc')) $('#prof-desc').value = p.description || '';
     if ($('#prof-cap')) $('#prof-cap').value = p.capacity || '';
+    if ($('#prof-notify')) $('#prof-notify').value = notifyUrl();
   }
   function saveProfile() {
     const cap = parseInt($('#prof-cap').value, 10);
@@ -301,6 +310,10 @@
     loadProfile();
     $('#prof-save').addEventListener('click', saveProfile);
     $('#prof-ai').addEventListener('click', analyzeProfile);
+    $('#prof-notify-save').addEventListener('click', () => {
+      try { localStorage.setItem(NOTIFY_KEY, $('#prof-notify').value.trim()); } catch (e) {}
+      toast('כתובת ההתראות נשמרה ✓');
+    });
     scanNew(true); // זריעה ראשונית ללא התראה
     // רענון חי + התראה כשמגיעה הזמנה חדשה מהשרת (זמן אמת)
     document.addEventListener('boardog:sync', () => { renderCalendar(); scanNew(false); });

@@ -17,6 +17,7 @@
      SUPABASE_KEY         service_role key (מומלץ) או anon אם RLS פתוח
      ANTHROPIC_API_KEY    (רשות) אם מוגדר — שיחה טבעית עם Claude; אחרת מנוע מונחה
      OWNER_PHONE          (רשות) מספר הבעלים לקבלת התראה על כל ליד/שריון חדש
+     NOTIFY_TOKEN         (רשות) אם מוגדר — נדרש token תואם ב-POST /notify
      CAPACITY             (רשות) תפוסה מרבית ברירת מחדל (נגזר קודם ממאפייני הפנסיון)
      REMIND_AFTER_HOURS   (רשות) שעות מהפגישה עד תזכורת תאריכים (ברירת מחדל 24)
      GRAPH_VERSION        (רשות) ברירת מחדל v21.0
@@ -479,6 +480,33 @@ async function notifyOwner(env, body) {
 }
 
 /* =============================================================
+   POST /notify — שליחת הודעה יזומה ללקוח (למשל ביטול מדשבורד הבעלים)
+   גוף: { phone, text, token? }.  CORS מאופשר לדפי GitHub Pages.
+   ============================================================= */
+const ALLOWED_ORIGINS = ['https://shaydadon.github.io', 'http://localhost:8080', 'http://127.0.0.1:8080'];
+function corsHeaders(request) {
+  const origin = request.headers.get('Origin') || '';
+  const allow = ALLOWED_ORIGINS.indexOf(origin) !== -1 ? origin : ALLOWED_ORIGINS[0];
+  return { 'Access-Control-Allow-Origin': allow, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'content-type', 'Vary': 'Origin' };
+}
+const jsonRes = (obj, status, headers) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json', ...(headers || {}) } });
+
+async function handleNotify(request, env) {
+  const cors = corsHeaders(request);
+  if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
+  if (request.method !== 'POST') return jsonRes({ error: 'method' }, 405, cors);
+  let body; try { body = await request.json(); } catch (e) { return jsonRes({ error: 'bad json' }, 400, cors); }
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token') || body.token;
+  if (env.NOTIFY_TOKEN && token !== env.NOTIFY_TOKEN) return jsonRes({ error: 'unauthorized' }, 401, cors);
+  const phone = String(body.phone || '').replace(/[^\d]/g, '');
+  const text = String(body.text || '').trim();
+  if (!phone || !text) return jsonRes({ error: 'missing phone/text' }, 400, cors);
+  try { await sendText(env, phone, text); } catch (e) { return jsonRes({ error: 'send failed' }, 502, cors); }
+  return jsonRes({ ok: true }, 200, cors);
+}
+
+/* =============================================================
    תזכורת אוטומטית: אם עברו X שעות מפגישת ההיכרות ולא שוריינו תאריכים
    → שולחים ללקוח הודעת תזכורת (פעם אחת). רץ מ-Cron Trigger.
    ============================================================= */
@@ -515,6 +543,9 @@ export default {
   },
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // נקודת-קצה להתראות יזומות ללקוח (מדשבורד הבעלים)
+    if (url.pathname.endsWith('/notify')) return handleNotify(request, env);
 
     // אימות ה-webhook מול Meta
     if (request.method === 'GET') {
