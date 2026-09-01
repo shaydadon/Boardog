@@ -1,0 +1,23 @@
+# Cloudflare Worker – BoarDog WhatsApp webhook
+# פריסה:  wrangler deploy -c worker/wrangler.whatsapp.toml
+#
+# סודות (לא נשמרים כאן — דרך wrangler secret put):
+#   wrangler secret put WHATSAPP_TOKEN     -c worker/wrangler.whatsapp.toml
+#   wrangler secret put SUPABASE_KEY       -c worker/wrangler.whatsapp.toml   # service_role מומלץ
+#   wrangler secret put ANTHROPIC_API_KEY  -c worker/wrangler.whatsapp.toml   # רשות – למצב Claude
+
+name = "boardog-whatsapp"
+main = "whatsapp-webhook.js"
+compatibility_date = "2024-11-01"
+
+# משתנים לא-סודיים (ערכו לפי הפרויקט שלכם)
+[vars]
+PHONE_NUMBER_ID = "REPLACE_ME"
+VERIFY_TOKEN = "REPLACE_ME"
+SUPABASE_URL = "https://egznewpwbcnhkzhmpckk.supabase.co"
+REMIND_AFTER_HOURS = "24"
+GRAPH_VERSION = "v21.0"
+
+# סריקת תזכורות – כל 3 שעות
+[triggers]
+crons = ["0 */3 * * *"]

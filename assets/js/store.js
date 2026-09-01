@@ -17,6 +17,7 @@
   const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const parse = s => new Date(s + 'T00:00:00');
   const uid = () => 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const norm = s => String(s == null ? '' : s).trim().toLowerCase();
 
   // זמינות שבועית קבועה: מפה weekday(0-6) → מערך שעות. ברירת מחדל: א'-ה', 16:00 ו-18:00
   function defaultAvail() { return { 0: [16, 18], 1: [16, 18], 2: [16, 18], 3: [16, 18], 4: [16, 18], 5: [], 6: [] }; }
@@ -83,6 +84,28 @@
         peak = Math.max(peak, n); days.push({ date: key(new Date(d)), n });
       }
       return { dogs: overlapping.map(b => ({ dog: b.dogName, owner: b.ownerName, start: b.start, end: b.end })), total: overlapping.length, peak, days };
+    },
+
+    // ---- לקוחות חוזרים + מעקב תאריכים אחרי פגישת היכרות ----
+    // לקוח חוזר = יש לו כבר שהייה בעבר (לפי שם הבעלים)
+    isReturning(ownerName) {
+      const n = norm(ownerName);
+      if (!n) return false;
+      return Store.boardings().some(b => norm(b.ownerName) === n);
+    },
+    // שם הכלב מהשהייה האחרונה של אותו בעלים (למילוי מראש)
+    lastDogFor(ownerName) {
+      const n = norm(ownerName);
+      const hit = Store.boardings().filter(b => norm(b.ownerName) === n).slice(-1)[0];
+      return hit ? hit.dogName : '';
+    },
+    // האם לפגישת היכרות כבר שוריינו תאריכי שהייה
+    meetingFulfilled(meetingId) {
+      return Store.boardings().some(b => b.meetingId === meetingId);
+    },
+    // פגישות היכרות שעדיין ממתינות לשריון תאריכים
+    meetingsAwaitingDates() {
+      return Store.meetings().filter(m => !Store.meetingFulfilled(m.id));
     },
 
     reset() { [K.meet, K.board].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); }

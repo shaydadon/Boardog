@@ -77,8 +77,38 @@
     const box = $('#day-detail');
     if (!meets.length && !boards.length) { box.innerHTML = `<div class="dd-empty">אין פגישות או שהיות ב-${S.key(date)}</div>`; return; }
     box.innerHTML = `<div class="dd-title">${DOW[date.getDay()]} · ${S.key(date)}</div>` +
-      meets.map(m => `<div class="dd-row meet">📋 פגישת היכרות ${m.time} — ${esc(m.dogName)} (${esc(m.ownerName)})</div>`).join('') +
+      meets.map(m => {
+        const done = S.meetingFulfilled(m.id);
+        return `<div class="dd-row meet">📋 פגישת היכרות ${m.time} — ${esc(m.dogName)} (${esc(m.ownerName)}) ` +
+          (done ? `<span class="dd-tag ok">✓ תאריכים שוריינו</span>`
+                : `<span class="dd-tag wait">⏳ ממתין לתאריכים</span>` +
+                  `<div class="dd-reserve"><button class="mini-btn" data-mid="${esc(m.id)}">＋ שריין תאריכי שהייה</button></div>`) +
+          `</div>`;
+      }).join('') +
       boards.map(b => `<div class="dd-row board">🏠 שהייה — ${esc(b.dogName)} (${esc(b.ownerName)}) · ${b.start}→${b.end}</div>`).join('');
+    box.querySelectorAll('.mini-btn[data-mid]').forEach(btn =>
+      btn.addEventListener('click', () => openReserve(btn, meets.find(m => m.id === btn.dataset.mid), date)));
+  }
+
+  // שריון תאריכי השהייה שסוכמו בפגישת ההיכרות → מופיע ביומן + הודעה ללקוח
+  function openReserve(btn, meeting, date) {
+    if (!meeting) return;
+    const holder = btn.parentElement;
+    const today = new Date().toISOString().slice(0, 10);
+    holder.innerHTML =
+      `<div class="reserve-form">` +
+      `<input type="date" class="rf-from" min="${today}">` +
+      `<input type="date" class="rf-to" min="${today}">` +
+      `<button class="mini-btn go">שמור</button></div>`;
+    holder.querySelector('.go').addEventListener('click', () => {
+      const f = holder.querySelector('.rf-from').value, t = holder.querySelector('.rf-to').value;
+      if (!f || !t) { toast('בחר/י טווח תאריכים'); return; }
+      const start = f <= t ? f : t, end = f <= t ? t : f;
+      S.addBoarding({ dogName: meeting.dogName, ownerName: meeting.ownerName, start, end, meetingId: meeting.id, phone: meeting.phone });
+      toast('התאריכים שוריינו — נשלחה הודעה ללקוח ✓');
+      renderCalendar();
+      showDay(date, S.meetingsOn(date), S.boardingsOn(date));
+    });
   }
 
   /* ---------- שאילתת "כמה כלבים" ---------- */

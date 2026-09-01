@@ -15,10 +15,18 @@
   /* ---------------- מנוע מונחה ---------------- */
   function ScriptedBot(io) {
     let step = -1;
+    let returning = false, askedDates = false;
     const answers = {};
 
     function ask() {
       step++;
+      if (returning) {
+        if (!askedDates) {
+          askedDates = true;
+          io.bot({ text: `ברוך שובך, ${answers.ownerName}! 🎾 שמחים לראותך שוב.\nלאילו תאריכים לשריין את השהייה של ${answers.dogName || 'הכלב'} הפעם?`, daterange: true });
+        }
+        return;
+      }
       if (step < INTAKE.length) {
         const s = INTAKE[step];
         io.bot({ text: fill(s.q, answers), choices: s.choices || null });
@@ -44,18 +52,16 @@
       if (!slot) { io.bot({ text: 'אופס, המועד נתפס 😅 בוא/י נבחר אחר:', slots: S.deriveSlots().slice(0, 5).map(s => ({ id: s.id, label: s.label })) }); return; }
       S.addMeeting({ date: slot.date, time: slot.time, dogName: answers.dogName, ownerName: answers.ownerName, breed: answers.breed });
       answers.meeting = slot.label;
-      io.bot({ text: `מעולה! ✅ שיריינתי פגישת היכרות ל${slot.label}.` });
-      setTimeout(askBoarding, 500);
+      // לקוח חדש: מסיימים בפגישת ההיכרות. תאריכי השהייה ייקבעו יחד בפגישה.
+      io.bot({ text: `מעולה! ✅ קבעתי פגישת היכרות ל${slot.label}.\nניפגש אז, נכיר את ${answers.dogName || 'הכלב'} 🐶, ואת תאריכי השהייה נסגור יחד עם ${K.ownerName} בפגישה.\nיש עוד משהו שאפשר לעזור בו?` });
+      io.done(summary());
     }
 
-    function askBoarding() {
-      io.bot({ text: `ולסיום — לאילו תאריכים לשריין את השהייה של ${answers.dogName || 'הכלב'} בפנסיון?`, daterange: true });
-    }
-
+    // מסלול לקוח חוזר — שריון תאריכים ישיר בצ'אט
     function boarding(start, end) {
-      S.addBoarding({ dogName: answers.dogName, ownerName: answers.ownerName, start, end });
+      S.addBoarding({ dogName: answers.dogName || '', ownerName: answers.ownerName, start, end });
       answers.boardingStart = start; answers.boardingEnd = end;
-      io.bot({ text: `סגור! 🐶 רשמתי שהייה מ-${start} עד ${end}.\nשלחתי את כל הפרטים ל${K.ownerName} מהפנסיון — הוא יאשר סופית ויחזור אליך אם צריך. נתראה! 🎾` });
+      io.bot({ text: `סגור! 🐶 שיריינתי שהייה מ-${start} עד ${end}.\nשלחתי אישור ל${K.ownerName} מהפנסיון — נתראה! 🎾` });
       io.done(summary());
     }
 
@@ -76,6 +82,11 @@
         if (tryAnswerQuestion(text)) return;
         const s = INTAKE[step];
         if (s) answers[s.key] = text;
+        // זיהוי לקוח חוזר מיד לאחר קליטת השם → דילוג על התשאול
+        if (s && s.key === 'ownerName' && S.isReturning(answers.ownerName)) {
+          returning = true;
+          answers.dogName = S.lastDogFor(answers.ownerName) || answers.dogName || '';
+        }
         setTimeout(ask, 300);
       },
       pickSlot, boarding,
@@ -86,15 +97,18 @@
   /* ---------------- מנוע AI (Claude + Tool Use) ---------------- */
   const SYSTEM =
     'את/ה עוזר/ת וירטואלי/ת של פנסיון כלבים בשם "' + K.name + '" (מנהל: ' + K.ownerName + '). ' +
-    'קלוט/י לקוח חדש בצ\'אט וואטסאפ בעברית, בחום ובקצרה (שאלה אחת-שתיים בכל פעם, אפשר אימוג\'ים). ' +
-    'הלקוח יכול לשאול שאלות פתוחות בכל שלב — ענה/י לפי "מידע על הפנסיון" למטה ואל תמציא/י עובדות. ' +
-    'אסוף/אספי: שם בעלים, שם כלב, גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, בריאות/תרופות, ' +
-    'התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז. ' +
-    'לאחר מכן קרא/י ל-get_available_slots והצג/י 3–5 מועדים לפגישת היכרות; כשהלקוח בוחר — book_meeting (עם slot_id, dog_name, owner_name). ' +
-    'אחר כך בקש/י את תאריכי השהייה בפנסיון וקרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD. ' +
-    'לבסוף save_summary עם כל הנתונים, והודה/י ללקוח.\n\nמידע על הפנסיון:\n' + K.knowledge();
+    'קלוט/י פניות בוואטסאפ בעברית, בחום ובקצרה (שאלה אחת-שתיים בכל פעם, אפשר אימוג\'ים). ' +
+    'תחילה שאל/י לשם הפונה, וקרא/י ל-lookup_customer עם owner_name כדי לבדוק אם זה לקוח קיים.\n' +
+    '• אם returning=true (לקוח קיים): דלג/י על התשאול לגמרי, ברך/י אותו בשמו, ובקש/י ישירות את תאריכי השהייה. ' +
+    'קרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
+    '• אם לקוח חדש: אסוף/אספי שם כלב, גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, בריאות/תרופות, ' +
+    'התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז. ואז קרא/י ל-get_available_slots והצג/י 3–5 מועדים; כשהלקוח בוחר — book_meeting (slot_id, dog_name, owner_name). ' +
+    'לאחר קביעת פגישת ההיכרות ללקוח חדש — *אל תשריין/י תאריכי שהייה עדיין ואל תקרא/י ל-book_boarding*. ' +
+    'הסבר/י בקצרה שתאריכי השהייה ייקבעו יחד עם ' + K.ownerName + ' בפגישת ההיכרות, קרא/י ל-save_summary וסיים/י בברכה.\n' +
+    'הלקוח יכול לשאול שאלות פתוחות בכל שלב — ענה/י לפי "מידע על הפנסיון" למטה ואל תמציא/י עובדות.\n\nמידע על הפנסיון:\n' + K.knowledge();
 
   const TOOLS = [
+    { name: 'lookup_customer', description: 'בודק אם הפונה הוא לקוח קיים לפי שם הבעלים.', input_schema: { type: 'object', properties: { owner_name: { type: 'string' } }, required: ['owner_name'], additionalProperties: false } },
     { name: 'get_available_slots', description: 'מחזיר מועדי פגישות היכרות פנויים.', input_schema: { type: 'object', properties: {}, additionalProperties: false } },
     { name: 'book_meeting', description: 'משריין פגישת היכרות.', input_schema: { type: 'object', properties: { slot_id: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['slot_id'], additionalProperties: true } },
     { name: 'book_boarding', description: 'משריין שהייה בפנסיון לטווח תאריכים.', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
@@ -102,6 +116,10 @@
   ];
 
   async function runTool(name, input) {
+    if (name === 'lookup_customer') {
+      const ret = S.isReturning(input.owner_name);
+      return { returning: ret, last_dog: ret ? S.lastDogFor(input.owner_name) : '' };
+    }
     if (name === 'get_available_slots') {
       if (window.BoarDogCloud && window.BoarDogCloud.refresh) { try { await window.BoarDogCloud.refresh(); } catch (e) {} }
       return { slots: S.deriveSlots().slice(0, 6).map(s => ({ id: s.id, label: s.label })) };

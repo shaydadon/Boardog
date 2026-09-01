@@ -16,8 +16,15 @@
      SUPABASE_URL         https://<ref>.supabase.co
      SUPABASE_KEY         service_role key (מומלץ) או anon אם RLS פתוח
      ANTHROPIC_API_KEY    (רשות) אם מוגדר — שיחה טבעית עם Claude; אחרת מנוע מונחה
+     REMIND_AFTER_HOURS   (רשות) שעות מהפגישה עד תזכורת תאריכים (ברירת מחדל 24)
      GRAPH_VERSION        (רשות) ברירת מחדל v21.0
      MODEL                (רשות) ברירת מחדל claude-opus-5
+
+   ── תזכורת אוטומטית (Cron) ────────────────────────────────────
+     דורש Cron Trigger (ראו worker/wrangler.whatsapp.toml). ה-Worker
+     סורק פגישות היכרות שעברו ולא שוריינו להן תאריכים, ושולח ללקוח
+     תזכורת פעם אחת. פריסה עם קובץ הקונפיג:
+       wrangler deploy -c worker/wrangler.whatsapp.toml
 
    ── פריסה ─────────────────────────────────────────────────────
      wrangler deploy
@@ -140,13 +147,32 @@ async function loadMeetings(env) {
   const rows = await sbGet(env, `meetings?kennel=eq.${KENNEL_ID}&select=data`);
   return rows.map(r => r.data).filter(Boolean);
 }
+async function loadMeetingRows(env) {
+  return await sbGet(env, `meetings?kennel=eq.${KENNEL_ID}&select=id,data`);
+}
+async function loadBoardings(env) {
+  const rows = await sbGet(env, `boardings?kennel=eq.${KENNEL_ID}&select=data`);
+  return rows.map(r => r.data).filter(Boolean);
+}
 async function addMeeting(env, rec) {
   const id = uid();
   await sbUpsert(env, 'meetings', { id, kennel: KENNEL_ID, data: { id, ...rec } }, 'id');
+  return id;
 }
 async function addBoarding(env, rec) {
   const id = uid();
   await sbUpsert(env, 'boardings', { id, kennel: KENNEL_ID, data: { id, ...rec } }, 'id');
+}
+async function updateMeetingData(env, id, data) {
+  await sbUpsert(env, 'meetings', { id, kennel: KENNEL_ID, data }, 'id');
+}
+// לקוח חוזר לפי מספר טלפון (יש לו שהייה קודמת)
+async function returningInfo(env, phone) {
+  const b = await loadBoardings(env);
+  const mine = b.filter(x => x.phone && x.phone === phone);
+  if (!mine.length) return { returning: false };
+  const last = mine[mine.length - 1];
+  return { returning: true, ownerName: last.ownerName || '', dogName: last.dogName || '' };
 }
 
 /* =============================================================
@@ -173,6 +199,15 @@ async function handleMessage(env, state, textRaw) {
   // ── שלב התשאול ──
   if (state.phase === 'intake') {
     if (state.step === -1) {
+      // לקוח חוזר → דילוג על התשאול, ישר לשריון תאריכים
+      const info = await returningInfo(env, state.phone);
+      if (info.returning) {
+        a.ownerName = info.ownerName; a.dogName = info.dogName;
+        state.phase = 'boarding'; state.returning = true;
+        replies.push(`שלום ${info.ownerName || ''}! 👋 שמחים לראותך שוב ב${KENNEL.name} 🎾`);
+        replies.push(`לאילו תאריכים לשריין את השהייה של ${info.dogName || 'הכלב'} הפעם? (למשל: 2026-09-10 עד 2026-09-14)`);
+        return { state, replies };
+      }
       replies.push(`שלום! 👋 הגעתם ל${KENNEL.name}. אני העוזר הדיגיטלי ואשמח לקלוט את הפרטים לקראת שהייה.`);
     } else {
       const cur = INTAKE[state.step];
@@ -204,9 +239,10 @@ async function handleMessage(env, state, textRaw) {
     }
     await addMeeting(env, { date: slot.date, time: slot.time, dogName: a.dogName, ownerName: a.ownerName, breed: a.breed, phone: state.phone });
     a.meeting = slot.label;
-    replies.push(`מעולה! ✅ שיריינתי פגישת היכרות ל${slot.label}.`);
-    replies.push(`ולסיום — לאילו תאריכים לשריין את השהייה של ${a.dogName || 'הכלב'} בפנסיון? (למשל: 2026-09-10 עד 2026-09-14)`);
-    state.phase = 'boarding';
+    // לקוח חדש: מסתיים בפגישת ההיכרות. תאריכי השהייה ייקבעו יחד בפגישה.
+    replies.push(`מעולה! ✅ קבעתי פגישת היכרות ל${slot.label}.`);
+    replies.push(`ניפגש אז ונכיר את ${a.dogName || 'הכלב'} 🐶. את תאריכי השהייה נסגור יחד עם ${KENNEL.ownerName} בפגישה. נתראה! 🎾`);
+    state.phase = 'done';
     return { state, replies };
   }
 
@@ -267,11 +303,19 @@ const AI_TOOLS = [
   { name: 'save_summary', description: 'שומר את סיכום הקליטה עבור בעל הפנסיון.', input_schema: { type: 'object', properties: {}, additionalProperties: true } }
 ];
 
-async function callClaude(env, messages) {
+function buildSystem(state) {
+  if (state.returning) {
+    return AI_SYSTEM + `\n\n[הקשר] הפונה הוא לקוח קיים (שם: ${state.custName || ''}, כלב: ${state.custDog || ''}). ` +
+      'דלג/י על התשאול לגמרי, ברך/י אותו בשמו ובקש/י ישירות את תאריכי השהייה, ואז קרא/י ל-book_boarding ולבסוף save_summary.';
+  }
+  return AI_SYSTEM + `\n\n[הקשר] פונה חדש. בצע/י תשאול קצר, קבע/י פגישת היכרות עם book_meeting, ` +
+    `ואז *אל תשריין/י תאריכי שהייה ואל תקרא/י ל-book_boarding* — הסבר/י שהתאריכים ייקבעו בפגישה עם ${KENNEL.ownerName}, קרא/י ל-save_summary וסיים/י.`;
+}
+async function callClaude(env, messages, system) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: env.MODEL || 'claude-opus-5', max_tokens: 1024, system: AI_SYSTEM, tools: AI_TOOLS, messages })
+    body: JSON.stringify({ model: env.MODEL || 'claude-opus-5', max_tokens: 1024, system: system || AI_SYSTEM, tools: AI_TOOLS, messages })
   });
   if (!r.ok) throw new Error('claude ' + r.status);
   return r.json();
@@ -303,13 +347,18 @@ async function runToolAI(env, name, input, state) {
 
 async function handleMessageAI(env, state, text) {
   if (!Array.isArray(state.messages)) state.messages = [];
-  if (/^(התחל|restart|reset|שיחה חדשה)/i.test((text || '').trim())) { state.messages = []; state.summary = null; }
+  if (/^(התחל|restart|reset|שיחה חדשה)/i.test((text || '').trim())) { state.messages = []; state.summary = null; state.returning = undefined; }
+  // זיהוי לקוח חוזר פעם אחת בתחילת השיחה (לפי טלפון)
+  if (state.returning === undefined) {
+    const info = await returningInfo(env, state.phone);
+    state.returning = info.returning; state.custName = info.ownerName || ''; state.custDog = info.dogName || '';
+  }
   state.messages.push({ role: 'user', content: text || '' });
 
   const replies = [];
   try {
     for (let i = 0; i < 6; i++) {
-      const res = await callClaude(env, state.messages);
+      const res = await callClaude(env, state.messages, buildSystem(state));
       state.messages.push({ role: 'assistant', content: res.content });
       const texts = res.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
       if (texts) replies.push(texts);
@@ -345,9 +394,40 @@ async function sendText(env, to, body) {
 }
 
 /* =============================================================
+   תזכורת אוטומטית: אם עברו X שעות מפגישת ההיכרות ולא שוריינו תאריכים
+   → שולחים ללקוח הודעת תזכורת (פעם אחת). רץ מ-Cron Trigger.
+   ============================================================= */
+async function runReminders(env) {
+  const afterH = parseInt(env.REMIND_AFTER_HOURS || '24', 10);
+  const rows = await loadMeetingRows(env);       // [{id, data}]
+  const boardings = await loadBoardings(env);
+  const now = Date.now();
+  for (const row of rows) {
+    const m = row.data || {};
+    if (!m.date || !m.time || !m.phone || m.remindedAt) continue;
+    // האם כבר שוריינו תאריכים (מקושר לפגישה או לאותו טלפון)
+    const fulfilled = boardings.some(b => b.meetingId === row.id || (b.phone && b.phone === m.phone));
+    if (fulfilled) continue;
+    const hhmm = (m.time || '00:00').slice(0, 5);
+    const mt = new Date(`${m.date}T${hhmm}:00`).getTime();
+    if (isNaN(mt)) continue;
+    if (now < mt + afterH * 3600 * 1000) continue;        // עדיין לא הגיע הזמן
+    if (now - mt > 14 * 24 * 3600 * 1000) continue;        // ישן מדי — לא מזכירים
+    await sendText(env, m.phone,
+      `היי ${m.ownerName || ''} 🐾 נעים היה להכיר! שמנו לב שעדיין לא נקבעו תאריכי שהייה ל${m.dogName || 'הכלב'} ב${KENNEL.name}. ` +
+      `רוצים שנשריין? שלחו לי טווח תאריכים (למשל 2026-09-10 עד 2026-09-14) ואשמח לסדר 🎾`);
+    await updateMeetingData(env, row.id, { ...m, remindedAt: new Date().toISOString() });
+  }
+}
+
+/* =============================================================
    נקודת הכניסה
    ============================================================= */
 export default {
+  // Cron Trigger — סריקת תזכורות
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runReminders(env));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
 
@@ -404,6 +484,8 @@ export default {
    TODO – שדרוגים לאחר השלד
    • [בוצע] Claude Tool Use: שיחה טבעית עם המודל (handleMessageAI) —
      פעיל אוטומטית כשמוגדר ANTHROPIC_API_KEY.
+   • [בוצע] לקוח חוזר מדלג על התשאול; לקוח חדש מסיים בפגישת היכרות
+     ותאריכי השהייה נקבעים אחריה; תזכורת אוטומטית אם לא שוריינו (Cron).
    • כפתורים/רשימות אינטראקטיביים של WhatsApp במקום מספרים בטקסט.
    • דדופ לפי msg.id (למניעת עיבוד כפול בעת ניסיונות חוזרים של Meta).
    • התראה לבעל הפנסיון (הודעת WhatsApp/מייל) על ליד/פגישה חדשה.
