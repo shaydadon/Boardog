@@ -15,7 +15,9 @@
      VERIFY_TOKEN         מחרוזת סוד שתגדירו גם ב-Meta לאימות ה-webhook
      SUPABASE_URL         https://<ref>.supabase.co
      SUPABASE_KEY         service_role key (מומלץ) או anon אם RLS פתוח
+     ANTHROPIC_API_KEY    (רשות) אם מוגדר — שיחה טבעית עם Claude; אחרת מנוע מונחה
      GRAPH_VERSION        (רשות) ברירת מחדל v21.0
+     MODEL                (רשות) ברירת מחדל claude-opus-5
 
    ── פריסה ─────────────────────────────────────────────────────
      wrangler deploy
@@ -244,6 +246,93 @@ async function offerSlots(env, state, replies) {
 }
 
 /* =============================================================
+   מנוע AI (Claude + Tool Use) — שיחה טבעית בצד השרת
+   פעיל כאשר מוגדר ANTHROPIC_API_KEY; אחרת נופלים למנוע המונחה.
+   ============================================================= */
+const knowledge = () => Object.values(INFO).join('\n');
+const AI_SYSTEM =
+  'את/ה עוזר/ת וירטואלי/ת של פנסיון כלבים בשם "' + KENNEL.name + '" (מנהל: ' + KENNEL.ownerName + '). ' +
+  'קלוט/י לקוח חדש בצ\'אט וואטסאפ בעברית, בחום ובקצרה (שאלה אחת-שתיים בכל פעם, אפשר אימוג\'ים). ' +
+  'הלקוח יכול לשאול שאלות פתוחות בכל שלב — ענה/י לפי "מידע על הפנסיון" למטה ואל תמציא/י עובדות. ' +
+  'אסוף/אספי: שם בעלים, שם כלב, גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, בריאות/תרופות, ' +
+  'התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז. ' +
+  'לאחר מכן קרא/י ל-get_available_slots והצג/י 3–5 מועדים לפגישת היכרות; כשהלקוח בוחר — book_meeting (עם slot_id, dog_name, owner_name). ' +
+  'אחר כך בקש/י את תאריכי השהייה בפנסיון וקרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD. ' +
+  'לבסוף save_summary עם כל הנתונים, והודה/י ללקוח.\n\nמידע על הפנסיון:\n' + knowledge();
+
+const AI_TOOLS = [
+  { name: 'get_available_slots', description: 'מחזיר מועדי פגישות היכרות פנויים.', input_schema: { type: 'object', properties: {}, additionalProperties: false } },
+  { name: 'book_meeting', description: 'משריין פגישת היכרות.', input_schema: { type: 'object', properties: { slot_id: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['slot_id'], additionalProperties: true } },
+  { name: 'book_boarding', description: 'משריין שהייה בפנסיון לטווח תאריכים.', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
+  { name: 'save_summary', description: 'שומר את סיכום הקליטה עבור בעל הפנסיון.', input_schema: { type: 'object', properties: {}, additionalProperties: true } }
+];
+
+async function callClaude(env, messages) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: env.MODEL || 'claude-opus-5', max_tokens: 1024, system: AI_SYSTEM, tools: AI_TOOLS, messages })
+  });
+  if (!r.ok) throw new Error('claude ' + r.status);
+  return r.json();
+}
+
+async function runToolAI(env, name, input, state) {
+  if (name === 'get_available_slots') {
+    const slots = deriveSlots(await loadAvailability(env), await loadMeetings(env)).slice(0, 6);
+    state.slots = slots;
+    return { slots: slots.map(s => ({ id: s.id, label: s.label })) };
+  }
+  if (name === 'book_meeting') {
+    const fresh = deriveSlots(await loadAvailability(env), await loadMeetings(env));
+    const slot = fresh.find(s => s.id === input.slot_id);
+    if (!slot) return { ok: false, reason: 'המועד לא פנוי או לא תקין — קרא שוב ל-get_available_slots והצע מועד אחר' };
+    await addMeeting(env, { date: slot.date, time: slot.time, dogName: input.dog_name || '', ownerName: input.owner_name || '', phone: state.phone });
+    return { ok: true, booked: slot.label };
+  }
+  if (name === 'book_boarding') {
+    const s = parseDate(input.start_date), e = parseDate(input.end_date);
+    if (!s || !e) return { ok: false, reason: 'תאריכים לא תקינים — נדרש פורמט YYYY-MM-DD' };
+    const [start, end] = s <= e ? [s, e] : [e, s];
+    await addBoarding(env, { dogName: input.dog_name || '', ownerName: input.owner_name || '', start, end, phone: state.phone });
+    return { ok: true, from: start, to: end };
+  }
+  if (name === 'save_summary') { state.summary = input || {}; return { ok: true }; }
+  return { ok: false };
+}
+
+async function handleMessageAI(env, state, text) {
+  if (!Array.isArray(state.messages)) state.messages = [];
+  if (/^(התחל|restart|reset|שיחה חדשה)/i.test((text || '').trim())) { state.messages = []; state.summary = null; }
+  state.messages.push({ role: 'user', content: text || '' });
+
+  const replies = [];
+  try {
+    for (let i = 0; i < 6; i++) {
+      const res = await callClaude(env, state.messages);
+      state.messages.push({ role: 'assistant', content: res.content });
+      const texts = res.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      if (texts) replies.push(texts);
+      const toolUses = res.content.filter(b => b.type === 'tool_use');
+      if (res.stop_reason === 'tool_use' && toolUses.length) {
+        const results = [];
+        for (const tu of toolUses) {
+          results.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(await runToolAI(env, tu.name, tu.input || {}, state)) });
+        }
+        state.messages.push({ role: 'user', content: results });
+        continue;
+      }
+      break;
+    }
+  } catch (e) {
+    replies.push('אירעה תקלה זמנית 🙏 אפשר לנסות שוב, או שאעביר את הפנייה ל' + KENNEL.ownerName + '.');
+  }
+  // הגבלת אורך ההיסטוריה כדי לא לתפוח (שומרים את הסבב האחרון)
+  if (state.messages.length > 40) state.messages = state.messages.slice(-40);
+  return { state, replies };
+}
+
+/* =============================================================
    WhatsApp Cloud API — שליחת הודעת טקסט
    ============================================================= */
 async function sendText(env, to, body) {
@@ -294,7 +383,9 @@ export default {
 
             let state = await loadState(env, from);
             state.phone = from;
-            const { state: next, replies } = await handleMessage(env, state, text);
+            // מנוע Claude אם מוגדר מפתח; אחרת המנוע המונחה
+            const engine = env.ANTHROPIC_API_KEY ? handleMessageAI : handleMessage;
+            const { state: next, replies } = await engine(env, state, text);
             await saveState(env, from, next);
             for (const r of replies) await sendText(env, from, r);
           }
@@ -311,9 +402,8 @@ export default {
 
 /* =============================================================
    TODO – שדרוגים לאחר השלד
-   • Claude Tool Use: להחליף את מנוע ה-INTAKE בשיחה טבעית עם המודל
-     (system + tools: get_available_slots/book_meeting/book_boarding),
-     בעזרת boardog-proxy.js או קריאה ישירה ל-Anthropic מכאן.
+   • [בוצע] Claude Tool Use: שיחה טבעית עם המודל (handleMessageAI) —
+     פעיל אוטומטית כשמוגדר ANTHROPIC_API_KEY.
    • כפתורים/רשימות אינטראקטיביים של WhatsApp במקום מספרים בטקסט.
    • דדופ לפי msg.id (למניעת עיבוד כפול בעת ניסיונות חוזרים של Meta).
    • התראה לבעל הפנסיון (הודעת WhatsApp/מייל) על ליד/פגישה חדשה.
