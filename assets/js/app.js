@@ -16,6 +16,22 @@
   let bot = null;
   let typingEl = null;
 
+  // שמירת סשן השיחה כדי לזכור אותה בין ביקורים
+  const SESS = 'boardog.session';
+  let transcript = [];   // [{who, text}]
+  let pending = null;    // הכפתורים/קלט שהיו על המסך אחרונים
+  let doneFlag = false;
+  let restoring = false;
+  function persist() {
+    try {
+      localStorage.setItem(SESS, JSON.stringify({
+        mode: bot ? bot.mode : null, transcript, pending, done: doneFlag,
+        bot: (bot && bot.getState) ? bot.getState() : null
+      }));
+    } catch (e) {}
+  }
+  function clearSession() { try { localStorage.removeItem(SESS); } catch (e) {} }
+
   const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const fmt = s => esc(s).replace(/\*(.+?)\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
   const now = () => { const d = new Date(); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); };
@@ -27,6 +43,7 @@
     row.innerHTML = `<div class="bubble">${fmt(text)}<span class="time">${now()}</span></div>`;
     chat.appendChild(row);
     scroll();
+    if (!restoring) transcript.push({ who, text });
     return row;
   }
 
@@ -55,7 +72,7 @@
     slots.forEach(s => {
       const b = document.createElement('button');
       b.className = 'quick-btn slot'; b.textContent = '📅 ' + s.label;
-      b.addEventListener('click', () => { addMsg(s.label, 'user'); if (bot) bot.pickSlot(s.id); });
+      b.addEventListener('click', () => { addMsg(s.label, 'user'); persist(); if (bot) bot.pickSlot(s.id); });
       quick.appendChild(b);
     });
   }
@@ -76,6 +93,7 @@
       const from = f <= t ? f : t, to = f <= t ? t : f;
       addMsg(`שהייה: ${from} עד ${to}`, 'user');
       clearQuick();
+      persist();
       if (bot) bot.boarding(from, to);
     });
   }
@@ -91,13 +109,15 @@
       setTimeout(() => {
         showTyping(false);
         addMsg(m.text, 'bot');
-        if (m.choices) renderChoices(m.choices);
-        if (m.slots) renderSlots(m.slots);
-        if (m.daterange) renderDateRange();
+        pending = null;
+        if (m.choices) { renderChoices(m.choices); pending = { choices: m.choices }; }
+        if (m.slots) { renderSlots(m.slots); pending = { slots: m.slots }; }
+        if (m.daterange) { renderDateRange(); pending = { daterange: true }; }
+        persist();
       }, Math.min(700, 250 + m.text.length * 6));
     },
     typing(on) { showTyping(on); },
-    done(summary) { setTimeout(() => renderSummary(summary), 900); },
+    done(summary) { doneFlag = true; pending = null; persist(); setTimeout(() => renderSummary(summary), 900); },
     fallback() { startScripted(); }
   };
 
@@ -106,6 +126,7 @@
     if (!text) return;
     addMsg(text, 'user');
     input.value = '';
+    persist();
     if (bot) bot.input(text);
   }
 
@@ -145,10 +166,40 @@
   function startAi(cfg) { io.cfg = cfg; bot = window.BoarDogBot.AiBot(io); bot.start(); }
 
   function restart() {
+    clearSession();
     chat.innerHTML = ''; clearQuick();
+    transcript = []; pending = null; doneFlag = false;
     const cfg = aiProvider();
     setBadge(!!cfg);
     if (cfg) startAi(cfg); else startScripted();
+  }
+
+  function addRestartButton() {
+    const again = document.createElement('button');
+    again.className = 'quick-btn'; again.textContent = '🔄 התחל שיחה חדשה';
+    again.addEventListener('click', restart);
+    quick.appendChild(again);
+  }
+
+  // שחזור סשן קודם (רציפות השיחה בין ביקורים)
+  function resume(session) {
+    transcript = Array.isArray(session.transcript) ? session.transcript : [];
+    doneFlag = !!session.done;
+    const cfg = aiProvider();
+    setBadge(!!cfg);
+    // מרנדרים מחדש את ההודעות הקודמות
+    restoring = true;
+    transcript.forEach(m => addMsg(m.text, m.who));
+    restoring = false;
+    // מקימים את הבוט עם המצב השמור (בלי לפתוח שיחה חדשה)
+    if (cfg) { io.cfg = cfg; bot = window.BoarDogBot.AiBot(io, session.bot); }
+    else bot = window.BoarDogBot.ScriptedBot(io, session.bot);
+    // משחזרים את הכפתורים/קלט שהיו על המסך
+    const p = session.pending;
+    if (p && p.choices) renderChoices(p.choices);
+    else if (p && p.slots) renderSlots(p.slots);
+    else if (p && p.daterange) renderDateRange();
+    if (doneFlag) addRestartButton();
   }
 
   function setBadge(ai) {
@@ -174,7 +225,11 @@
     $('#send').addEventListener('click', () => sendUser(input.value));
     input.addEventListener('keydown', e => { if (e.key === 'Enter') sendUser(input.value); });
 
-    restart();
+    // אם יש סשן שמור עם היסטוריה — ממשיכים אותו; אחרת מתחילים חדש
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(SESS) || 'null'); } catch (e) { saved = null; }
+    if (saved && Array.isArray(saved.transcript) && saved.transcript.length) resume(saved);
+    else restart();
   }
 
   document.addEventListener('DOMContentLoaded', init);

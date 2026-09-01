@@ -13,10 +13,13 @@
   const fill = (s, a) => s.replace(/\{(\w+)\}/g, (_, k) => a[k] || '');
 
   /* ---------------- מנוע מונחה ---------------- */
-  function ScriptedBot(io) {
-    let step = -1;
-    let returning = false, askedDates = false, lastMeeting = null;
-    const answers = {};
+  function ScriptedBot(io, saved) {
+    saved = saved || {};
+    let step = (typeof saved.step === 'number') ? saved.step : -1;
+    let returning = !!saved.returning, askedDates = !!saved.askedDates;
+    const answers = saved.answers || {};
+    let lastMeeting = saved.lastMeetingId ? (S.meetings().find(m => m.id === saved.lastMeetingId) || null) : null;
+    function getState() { return { step, returning, askedDates, answers, lastMeetingId: lastMeeting && lastMeeting.id }; }
 
     // בדיקת יומן: האם התאריכים פנויים וכמה כלבים כבר בטווח
     function capacityCheck(start, end) {
@@ -108,7 +111,7 @@
         }
         setTimeout(ask, 300);
       },
-      pickSlot, boarding,
+      pickSlot, boarding, getState,
       mode: 'scripted'
     };
   }
@@ -169,10 +172,12 @@
     return { error: 'unknown tool' };
   }
 
-  function AiBot(io) {
+  function AiBot(io, saved) {
+    saved = saved || {};
     const cfg = io.cfg || {};
-    const messages = [];
-    let lastSummary = null;
+    const messages = Array.isArray(saved.messages) ? saved.messages : [];
+    let lastSummary = saved.lastSummary || null;
+    function getState() { return { messages, lastSummary }; }
 
     function dynamicSystem() {
       const p = S.profile() || {};
@@ -213,6 +218,7 @@
       input(text) { messages.push({ role: 'user', content: text }); loop(); },
       pickSlot(id) { const s = S.findSlot(id); messages.push({ role: 'user', content: 'אני בוחר/ת: ' + (s ? s.label : id) }); loop(); },
       boarding(start, end) { messages.push({ role: 'user', content: `תאריכי השהייה: מ-${start} עד ${end}` }); loop(); },
+      getState,
       mode: 'ai'
     };
   }
