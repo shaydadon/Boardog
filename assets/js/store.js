@@ -73,6 +73,12 @@
       save(K.meet, Store.meetings().map(m => m.id === rec.id ? Object.assign({}, m, rec) : m));
       return rec;
     },
+    // עדכון רשומת שהייה קיימת (למשל קיצור טווח)
+    updateBoarding(rec) {
+      if (!rec || !rec.id) return rec;
+      save(K.board, Store.boardings().map(b => b.id === rec.id ? Object.assign({}, b, rec) : b));
+      return rec;
+    },
 
     // האם תאריך (Date) נמצא בתוך טווח שהייה
     boardingsOn(date) {

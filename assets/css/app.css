@@ -137,6 +137,9 @@ html, body { margin: 0; height: 100%; background: #0b141a; overflow-x: hidden;
 .dd-tag.wait { background: #fff3d6; color: #a8720a; }
 .dd-req { margin-top: 6px; font-size: 12.5px; color: #a8720a; font-weight: 600; }
 .dd-reserve { margin-top: 8px; }
+.del-btn { font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid #f0c4c4; background: #fdf0f0; color: #c0392b; border-radius: 8px; padding: 4px 9px; }
+.del-btn:active { transform: scale(.97); }
+.dd-del { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .mini-btn { font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; border: 1px solid #cdd6e0; background: #f5f8fc; color: #0b6bcb; border-radius: 8px; padding: 6px 10px; }
 .mini-btn:active { transform: scale(.97); }
 .reserve-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

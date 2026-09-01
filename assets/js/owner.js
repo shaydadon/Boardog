@@ -95,14 +95,45 @@
         const done = S.meetingFulfilled(m.id);
         const req = m.requestedStart ? `<div class="dd-req">🗓️ מבוקש ע״י הלקוח: ${esc(m.requestedStart)} → ${esc(m.requestedEnd)}</div>` : '';
         return `<div class="dd-row meet">📋 פגישת היכרות ${m.time} — ${esc(m.dogName)} (${esc(m.ownerName)}) ` +
+          `<button class="del-btn" title="מחק פגישה" data-del-meet="${esc(m.id)}">🗑</button>` +
           (done ? `<span class="dd-tag ok">✓ תאריכים שוריינו</span>`
                 : `<span class="dd-tag wait">⏳ ממתין לתאריכים</span>` + req +
                   `<div class="dd-reserve"><button class="mini-btn" data-mid="${esc(m.id)}">＋ שריין תאריכי שהייה</button></div>`) +
           `</div>`;
       }).join('') +
-      boards.map(b => `<div class="dd-row board">🏠 שהייה — ${esc(b.dogName)} (${esc(b.ownerName)}) · ${b.start}→${b.end}</div>`).join('');
+      boards.map(b => {
+        const multi = b.start !== b.end;
+        return `<div class="dd-row board">🏠 שהייה — ${esc(b.dogName)} (${esc(b.ownerName)}) · ${b.start}→${b.end}` +
+          `<div class="dd-del">` +
+          (multi ? `<button class="del-btn" data-del-day="${esc(b.id)}">🗑 יום זה (${S.key(date)})</button>` : '') +
+          `<button class="del-btn" data-del-board="${esc(b.id)}">🗑 כל השהייה</button>` +
+          `</div></div>`;
+      }).join('');
     box.querySelectorAll('.mini-btn[data-mid]').forEach(btn =>
       btn.addEventListener('click', () => openReserve(btn, meets.find(m => m.id === btn.dataset.mid), date)));
+    box.querySelectorAll('[data-del-meet]').forEach(btn =>
+      btn.addEventListener('click', () => { if (confirm('למחוק את פגישת ההיכרות?')) { S.removeMeeting(btn.dataset.delMeet); toast('הפגישה נמחקה'); refreshDay(date); } }));
+    box.querySelectorAll('[data-del-board]').forEach(btn =>
+      btn.addEventListener('click', () => { if (confirm('למחוק את כל השהייה?')) { S.removeBoarding(btn.dataset.delBoard); toast('השהייה נמחקה'); refreshDay(date); } }));
+    box.querySelectorAll('[data-del-day]').forEach(btn =>
+      btn.addEventListener('click', () => { if (confirm('להסיר את היום הזה מהשהייה?')) { removeBoardingDay(btn.dataset.delDay, S.key(date)); toast('היום הוסר מהשהייה'); refreshDay(date); } }));
+  }
+
+  function refreshDay(date) { renderCalendar(); showDay(date, S.meetingsOn(date), S.boardingsOn(date)); }
+
+  // הסרת יום בודד משהייה: קיצור מהקצה, או פיצול אם זה יום באמצע
+  function removeBoardingDay(id, dk) {
+    const b = S.boardings().find(x => x.id === id);
+    if (!b) return;
+    const dayMs = 86400000;
+    const prev = S.key(new Date(S.parse(dk).getTime() - dayMs));
+    const next = S.key(new Date(S.parse(dk).getTime() + dayMs));
+    if (dk <= b.start && dk >= b.end) { S.removeBoarding(id); return; } // יום יחיד
+    if (dk === b.start) { S.updateBoarding({ id, start: next }); return; }
+    if (dk === b.end) { S.updateBoarding({ id, end: prev }); return; }
+    // יום באמצע → מקצרים ל[start, prev] ומוסיפים [next, end]
+    S.updateBoarding({ id, end: prev });
+    S.addBoarding({ dogName: b.dogName, ownerName: b.ownerName, phone: b.phone, meetingId: b.meetingId, start: next, end: b.end });
   }
 
   // שריון תאריכי השהייה שסוכמו בפגישת ההיכרות → מופיע ביומן + הודעה ללקוח
