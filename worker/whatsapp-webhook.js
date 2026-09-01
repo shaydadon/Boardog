@@ -16,6 +16,7 @@
      SUPABASE_URL         https://<ref>.supabase.co
      SUPABASE_KEY         service_role key (מומלץ) או anon אם RLS פתוח
      ANTHROPIC_API_KEY    (רשות) אם מוגדר — שיחה טבעית עם Claude; אחרת מנוע מונחה
+     OWNER_PHONE          (רשות) מספר הבעלים לקבלת התראה על כל ליד/שריון חדש
      REMIND_AFTER_HOURS   (רשות) שעות מהפגישה עד תזכורת תאריכים (ברירת מחדל 24)
      GRAPH_VERSION        (רשות) ברירת מחדל v21.0
      MODEL                (רשות) ברירת מחדל claude-opus-5
@@ -238,6 +239,7 @@ async function handleMessage(env, state, textRaw) {
       return offerSlots(env, state, replies);
     }
     await addMeeting(env, { date: slot.date, time: slot.time, dogName: a.dogName, ownerName: a.ownerName, breed: a.breed, phone: state.phone });
+    await notifyOwner(env, `🔔 ליד חדש ב${KENNEL.name}\nפגישת היכרות: ${slot.label}\nבעלים: ${a.ownerName || '—'} · כלב: ${a.dogName || '—'} (${a.breed || '—'})\nטלפון: ${state.phone}`);
     a.meeting = slot.label;
     // לקוח חדש: מסתיים בפגישת ההיכרות. תאריכי השהייה ייקבעו יחד בפגישה.
     replies.push(`מעולה! ✅ קבעתי פגישת היכרות ל${slot.label}.`);
@@ -255,6 +257,7 @@ async function handleMessage(env, state, textRaw) {
     }
     const [start, end] = dates[0] <= dates[1] ? [dates[0], dates[1]] : [dates[1], dates[0]];
     await addBoarding(env, { dogName: a.dogName, ownerName: a.ownerName, start, end, phone: state.phone });
+    await notifyOwner(env, `🔔 שריון שהייה ב${KENNEL.name}\n${a.ownerName || '—'} · כלב: ${a.dogName || '—'}\nתאריכים: ${start} → ${end}\nטלפון: ${state.phone}`);
     replies.push(`סגור! 🐶 רשמתי שהייה מ-${start} עד ${end}.`);
     replies.push(`שלחתי את כל הפרטים ל${KENNEL.ownerName} מהפנסיון — הוא יאשר סופית ויחזור אליך אם צריך. נתראה! 🎾`);
     state.phase = 'done';
@@ -332,6 +335,7 @@ async function runToolAI(env, name, input, state) {
     const slot = fresh.find(s => s.id === input.slot_id);
     if (!slot) return { ok: false, reason: 'המועד לא פנוי או לא תקין — קרא שוב ל-get_available_slots והצע מועד אחר' };
     await addMeeting(env, { date: slot.date, time: slot.time, dogName: input.dog_name || '', ownerName: input.owner_name || '', phone: state.phone });
+    await notifyOwner(env, `🔔 ליד חדש ב${KENNEL.name}\nפגישת היכרות: ${slot.label}\nבעלים: ${input.owner_name || '—'} · כלב: ${input.dog_name || '—'}\nטלפון: ${state.phone}`);
     return { ok: true, booked: slot.label };
   }
   if (name === 'book_boarding') {
@@ -339,6 +343,7 @@ async function runToolAI(env, name, input, state) {
     if (!s || !e) return { ok: false, reason: 'תאריכים לא תקינים — נדרש פורמט YYYY-MM-DD' };
     const [start, end] = s <= e ? [s, e] : [e, s];
     await addBoarding(env, { dogName: input.dog_name || '', ownerName: input.owner_name || '', start, end, phone: state.phone });
+    await notifyOwner(env, `🔔 שריון שהייה ב${KENNEL.name}\n${input.owner_name || '—'} · כלב: ${input.dog_name || '—'}\nתאריכים: ${start} → ${end}\nטלפון: ${state.phone}`);
     return { ok: true, from: start, to: end };
   }
   if (name === 'save_summary') { state.summary = input || {}; return { ok: true }; }
@@ -391,6 +396,11 @@ async function sendText(env, to, body) {
     headers: { Authorization: 'Bearer ' + env.WHATSAPP_TOKEN, 'content-type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } })
   });
+}
+// התראה לבעל הפנסיון (אם הוגדר OWNER_PHONE)
+async function notifyOwner(env, body) {
+  if (!env.OWNER_PHONE) return;
+  try { await sendText(env, env.OWNER_PHONE, body); } catch (e) {}
 }
 
 /* =============================================================

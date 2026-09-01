@@ -11,6 +11,19 @@
   const HOURS = [8, 10, 12, 14, 16, 18, 20];
   const DOW = S.DOW;
   let viewDate = new Date();
+  const seen = { meet: new Set(), board: new Set() };
+
+  // התראה חיה על לידים/שריונים חדשים שנכנסו מהשרת
+  function scanNew(initial) {
+    const meets = S.meetings(), boards = S.boardings();
+    const newMeets = meets.filter(m => !seen.meet.has(m.id));
+    const newBoards = boards.filter(b => !seen.board.has(b.id));
+    meets.forEach(m => seen.meet.add(m.id));
+    boards.forEach(b => seen.board.add(b.id));
+    if (initial) return;
+    if (newMeets.length) { const m = newMeets[newMeets.length - 1]; toast(`🔔 ליד חדש: פגישת היכרות עם ${m.ownerName || 'לקוח'} ${m.dogName ? '(' + m.dogName + ')' : ''}`); }
+    else if (newBoards.length) { const b = newBoards[newBoards.length - 1]; toast(`🔔 שריון שהייה: ${b.ownerName || 'לקוח'} · ${b.start}→${b.end}`); }
+  }
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
@@ -104,7 +117,8 @@
       const f = holder.querySelector('.rf-from').value, t = holder.querySelector('.rf-to').value;
       if (!f || !t) { toast('בחר/י טווח תאריכים'); return; }
       const start = f <= t ? f : t, end = f <= t ? t : f;
-      S.addBoarding({ dogName: meeting.dogName, ownerName: meeting.ownerName, start, end, meetingId: meeting.id, phone: meeting.phone });
+      const rec = S.addBoarding({ dogName: meeting.dogName, ownerName: meeting.ownerName, start, end, meetingId: meeting.id, phone: meeting.phone });
+      if (rec && rec.id) seen.board.add(rec.id); // מונע התראה כפולה על פעולה שהבעלים עצמו ביצע
       toast('התאריכים שוריינו — נשלחה הודעה ללקוח ✓');
       renderCalendar();
       showDay(date, S.meetingsOn(date), S.boardingsOn(date));
@@ -187,8 +201,9 @@
     $('#ask-from').value = today; $('#ask-to').value = today;
     $('#ask-go').addEventListener('click', askRange);
     $('#ask-ai-go').addEventListener('click', askAi);
-    // רענון חי כשמגיעה הזמנה חדשה מהשרת (זמן אמת)
-    document.addEventListener('boardog:sync', () => { renderCalendar(); });
+    scanNew(true); // זריעה ראשונית ללא התראה
+    // רענון חי + התראה כשמגיעה הזמנה חדשה מהשרת (זמן אמת)
+    document.addEventListener('boardog:sync', () => { renderCalendar(); scanNew(false); });
   }
   document.addEventListener('DOMContentLoaded', init);
 })();

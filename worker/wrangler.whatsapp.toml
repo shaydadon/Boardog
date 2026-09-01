@@ -15,6 +15,7 @@ compatibility_date = "2024-11-01"
 PHONE_NUMBER_ID = "REPLACE_ME"
 VERIFY_TOKEN = "REPLACE_ME"
 SUPABASE_URL = "https://egznewpwbcnhkzhmpckk.supabase.co"
+OWNER_PHONE = "REPLACE_ME"          # מספר הבעלים (שי) לקבלת התראות, בפורמט בינ״ל: 9725XXXXXXXX
 REMIND_AFTER_HOURS = "24"
 GRAPH_VERSION = "v21.0"
 
