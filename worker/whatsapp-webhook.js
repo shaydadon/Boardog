@@ -207,8 +207,9 @@ async function returningInfo(env, phone) {
 /* =============================================================
    מנוע הקליטה (state machine) — מחזיר תשובות טקסט לשליחה
    ============================================================= */
-async function handleMessage(env, state, textRaw) {
+async function handleMessage(env, state, textRaw, interactiveId) {
   const text = (textRaw || '').trim();
+  interactiveId = interactiveId || '';
   const a = state.answers;
   const replies = [];
 
@@ -253,12 +254,12 @@ async function handleMessage(env, state, textRaw) {
 
   // ── בחירת מועד פגישת היכרות ──
   if (state.phase === 'slots') {
+    const byId = state.slots && state.slots.find(s => s.id === interactiveId);
     const n = parseInt(text.replace(/[^\d]/g, ''), 10);
-    const slot = state.slots && state.slots[n - 1];
+    const slot = byId || (state.slots && state.slots[n - 1]);
     if (!slot) {
-      replies.push('לא הבנתי איזה מועד 🤔 שלחו את *המספר* של המועד מהרשימה.');
-      state.slots.forEach((s, i) => replies.push(`${i + 1}. ${s.label}`));
-      return { state, replies };
+      replies.push('לא הבנתי איזה מועד 🤔 בחרו מהרשימה שוב:');
+      return offerSlots(env, state, replies);
     }
     // ודא שעדיין פנוי
     const fresh = deriveSlots(await loadAvailability(env), await loadMeetings(env));
@@ -329,10 +330,15 @@ async function offerSlots(env, state, replies) {
     state.phase = 'done';
     return { state, replies };
   }
-  replies.push(`תודה ${state.answers.ownerName || ''}! 🙌 לפני קליטה נקבע פגישת היכרות קצרה.\nהנה המועדים הפנויים — שלחו את המספר שמתאים:`);
-  slots.forEach((s, i) => replies.push(`${i + 1}. ${s.label}`));
   state.slots = slots;
   state.phase = 'slots';
+  replies.push({
+    text: `תודה ${state.answers.ownerName || ''}! 🙌 לפני קליטה נקבע פגישת היכרות קצרה. בחרו מועד:`,
+    list: {
+      button: 'בחר מועד',
+      rows: slots.map(s => ({ id: s.id, title: s.label.replace(' בשעה ', ' ').slice(0, 24), description: 'פגישת היכרות' }))
+    }
+  });
   return { state, replies };
 }
 
@@ -473,6 +479,33 @@ async function sendText(env, to, body) {
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } })
   });
 }
+// הודעת רשימה אינטראקטיבית (בחירת מועד בלחיצה)
+async function sendList(env, to, text, buttonLabel, rows) {
+  const ver = env.GRAPH_VERSION || 'v21.0';
+  await fetch(`https://graph.facebook.com/${ver}/${env.PHONE_NUMBER_ID}/messages`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + env.WHATSAPP_TOKEN, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp', to, type: 'interactive',
+      interactive: {
+        type: 'list',
+        body: { text: text.slice(0, 1024) },
+        action: { button: buttonLabel.slice(0, 20), sections: [{ title: 'מועדים פנויים', rows: rows.slice(0, 10) }] }
+      }
+    })
+  });
+}
+// שליחת פריט תשובה (מחרוזת = טקסט; אובייקט עם list = רשימה אינטראקטיבית, עם נפילה לטקסט)
+async function sendReply(env, to, r) {
+  if (typeof r === 'string') { await sendText(env, to, r); return; }
+  if (r && r.list) {
+    try { await sendList(env, to, r.text, r.list.button, r.list.rows); }
+    catch (e) { await sendText(env, to, r.text + '\n' + r.list.rows.map((x, i) => `${i + 1}. ${x.title}`).join('\n')); }
+    return;
+  }
+  if (r && r.text) await sendText(env, to, r.text);
+}
+
 // התראה לבעל הפנסיון (אם הוגדר OWNER_PHONE)
 async function notifyOwner(env, body) {
   if (!env.OWNER_PHONE) return;
@@ -575,15 +608,20 @@ export default {
             const text = msg.type === 'text' ? (msg.text && msg.text.body)
               : msg.type === 'interactive' ? (msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '')
               : '';
+            const interactiveId = msg.type === 'interactive'
+              ? (msg.interactive?.list_reply?.id || msg.interactive?.button_reply?.id || '') : '';
             if (!from) continue;
 
             let state = await loadState(env, from);
+            // דדופ: Meta עלולה לשלוח את אותה הודעה שוב בעת retry — מדלגים אם כבר טופלה
+            if (msg.id && Array.isArray(state.seenIds) && state.seenIds.includes(msg.id)) continue;
             state.phone = from;
             // מנוע Claude אם מוגדר מפתח; אחרת המנוע המונחה
             const engine = env.ANTHROPIC_API_KEY ? handleMessageAI : handleMessage;
-            const { state: next, replies } = await engine(env, state, text);
+            const { state: next, replies } = await engine(env, state, text, interactiveId);
+            if (msg.id) next.seenIds = [...(next.seenIds || []), msg.id].slice(-20);
             await saveState(env, from, next);
-            for (const r of replies) await sendText(env, from, r);
+            for (const r of replies) await sendReply(env, from, r);
           }
         }
       }
@@ -602,8 +640,8 @@ export default {
      פעיל אוטומטית כשמוגדר ANTHROPIC_API_KEY.
    • [בוצע] לקוח חוזר מדלג על התשאול; לקוח חדש מסיים בפגישת היכרות
      ותאריכי השהייה נקבעים אחריה; תזכורת אוטומטית אם לא שוריינו (Cron).
-   • כפתורים/רשימות אינטראקטיביים של WhatsApp במקום מספרים בטקסט.
-   • דדופ לפי msg.id (למניעת עיבוד כפול בעת ניסיונות חוזרים של Meta).
-   • התראה לבעל הפנסיון (הודעת WhatsApp/מייל) על ליד/פגישה חדשה.
+   • [בוצע] רשימת מועדים אינטראקטיבית (בחירה בלחיצה) + דדופ לפי msg.id.
+   • כפתורים אינטראקטיביים גם לשאלות כן/לא בתשאול.
+   • התראה לבעל הפנסיון (הודעת WhatsApp/מייל) על ליד/פגישה חדשה — בוצע.
    • ריבוי פנסיונים: מיפוי PHONE_NUMBER_ID → KENNEL_ID.
    ============================================================= */
