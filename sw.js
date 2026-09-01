@@ -1,5 +1,5 @@
 /* BoarDog – Service Worker (PWA, עבודה לא מקוונת) */
-const CACHE = 'boardog-v1';
+const CACHE = 'boardog-v2';
 const ASSETS = [
   '.',
   'index.html',
@@ -32,15 +32,14 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
-  // רק בקשות מאותו מקור נשמרות במטמון; Supabase/Claude תמיד מהרשת
+  // רק בקשות מאותו מקור מטופלות כאן; Supabase/Claude תמיד מהרשת
   if (new URL(req.url).origin !== self.location.origin) return;
+  // network-first: תמיד הגרסה העדכנית כשיש רשת, נפילה למטמון כשאין
   e.respondWith(
-    caches.match(req).then((cached) =>
-      cached || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-        return res;
-      }).catch(() => cached)
-    )
+    fetch(req).then((res) => {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+      return res;
+    }).catch(() => caches.match(req))
   );
 });

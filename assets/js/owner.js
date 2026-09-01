@@ -112,11 +112,38 @@
     box.querySelectorAll('.mini-btn[data-mid]').forEach(btn =>
       btn.addEventListener('click', () => openReserve(btn, meets.find(m => m.id === btn.dataset.mid), date)));
     box.querySelectorAll('[data-del-meet]').forEach(btn =>
-      btn.addEventListener('click', () => { if (confirm('למחוק את פגישת ההיכרות?')) { S.removeMeeting(btn.dataset.delMeet); toast('הפגישה נמחקה'); refreshDay(date); } }));
+      btn.addEventListener('click', () => {
+        if (!confirm('למחוק את פגישת ההיכרות?')) return;
+        const m = meets.find(x => x.id === btn.dataset.delMeet);
+        S.removeMeeting(btn.dataset.delMeet);
+        notifyCancel(m, `פגישת ההיכרות ל${m && m.time || ''} בוטלה`);
+        toast(m && m.phone ? 'הפגישה נמחקה — נשלחה הודעה ללקוח ✓' : 'הפגישה נמחקה');
+        refreshDay(date);
+      }));
     box.querySelectorAll('[data-del-board]').forEach(btn =>
-      btn.addEventListener('click', () => { if (confirm('למחוק את כל השהייה?')) { S.removeBoarding(btn.dataset.delBoard); toast('השהייה נמחקה'); refreshDay(date); } }));
+      btn.addEventListener('click', () => {
+        if (!confirm('למחוק את כל השהייה?')) return;
+        const b = boards.find(x => x.id === btn.dataset.delBoard);
+        S.removeBoarding(btn.dataset.delBoard);
+        notifyCancel(b, `השהייה (${b ? b.start + '→' + b.end : ''}) בוטלה`);
+        toast(b && b.phone ? 'השהייה נמחקה — נשלחה הודעה ללקוח ✓' : 'השהייה נמחקה');
+        refreshDay(date);
+      }));
     box.querySelectorAll('[data-del-day]').forEach(btn =>
-      btn.addEventListener('click', () => { if (confirm('להסיר את היום הזה מהשהייה?')) { removeBoardingDay(btn.dataset.delDay, S.key(date)); toast('היום הוסר מהשהייה'); refreshDay(date); } }));
+      btn.addEventListener('click', () => {
+        if (!confirm('להסיר את היום הזה מהשהייה?')) return;
+        const b = boards.find(x => x.id === btn.dataset.delDay);
+        removeBoardingDay(btn.dataset.delDay, S.key(date));
+        notifyCancel(b, `יום ${S.key(date)} הוסר מהשהייה`);
+        toast(b && b.phone ? 'היום הוסר — נשלחה הודעה ללקוח ✓' : 'היום הוסר מהשהייה');
+        refreshDay(date);
+      }));
+  }
+
+  // הודעת ביטול ללקוח. בדמו — מסומן בלוג; במוצר האמיתי נשלח וואטסאפ דרך ה-Worker.
+  function notifyCancel(rec, text) {
+    if (!rec || !rec.phone) return;
+    try { console.log('[BoarDog] הודעת ביטול ללקוח', rec.phone, '—', text); } catch (e) {}
   }
 
   function refreshDay(date) { renderCalendar(); showDay(date, S.meetingsOn(date), S.boardingsOn(date)); }
