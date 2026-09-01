@@ -262,28 +262,66 @@
     });
     return map;
   }
-  function renderRevenue() {
-    const price = basePrice();
+  const fmtNum = n => Math.round(n).toLocaleString('he-IL');
+  const monthLabel = ym => { const [y, mo] = ym.split('-'); return MONTHS_HE[+mo - 1] + ' ' + y; };
+  function revMonths() {
     const map = monthlyDogDays();
     const nowYm = new Date().getFullYear() + '-' + pad(new Date().getMonth() + 1);
-    if (!(nowYm in map)) map[nowYm] = map[nowYm] || 0;
-    const months = Object.keys(map).sort().slice(-12);
-    const sum = $('#rev-summary'), chart = $('#rev-chart');
-    if (!months.length || months.every(m => !map[m])) { sum.innerHTML = ''; chart.innerHTML = '<div class="dd-empty">אין עדיין שהיות להצגה.</div>'; return; }
-    const rows = months.map(ym => { const [y, mo] = ym.split('-'); return { ym, label: MONTHS_HE[+mo - 1] + ' ' + y, dogDays: map[ym], revenue: map[ym] * price }; });
-    const max = Math.max(1, ...rows.map(r => r.revenue));
-    const total = rows.reduce((a, r) => a + r.revenue, 0);
-    const fmt = n => n.toLocaleString('he-IL');
-    sum.innerHTML = price
-      ? `<div class="rev-total">סה"כ בתקופה: <b>${fmt(total)} ₪</b></div><div class="rev-note">הערכה לפי ${fmt(price)} ₪ ליום (מתוך התיאור)</div>`
-      : `<div class="rev-note">לא זוהה מחיר בתיאור — הגרף מציג ימי-כלב. הוסיפו מחיר בטאב "מאפיינים".</div>`;
-    chart.innerHTML = rows.map(r => {
-      const val = price ? `${fmt(r.revenue)} ₪` : `${r.dogDays} ימי-כלב`;
-      const pct = Math.round((price ? r.revenue : r.dogDays) / (price ? max : Math.max(1, ...rows.map(x => x.dogDays))) * 100);
-      return `<div class="rev-row"><div class="rev-label">${r.label}</div>` +
-        `<div class="rev-track"><div class="rev-fill" style="width:${Math.max(pct, 3)}%"></div></div>` +
-        `<div class="rev-val">${val}</div></div>`;
-    }).join('');
+    if (!(nowYm in map)) map[nowYm] = 0;
+    return { map: map, months: Object.keys(map).sort().slice(-12) };
+  }
+  // ציור עמודות: rows = [{label, value, text}]
+  function paintBars(rows) {
+    const chart = $('#rev-chart');
+    if (!rows.length || rows.every(r => !r.value)) { chart.innerHTML = '<div class="dd-empty">אין עדיין שהיות להצגה.</div>'; return; }
+    const max = Math.max(1, ...rows.map(r => r.value));
+    chart.innerHTML = rows.map(r =>
+      `<div class="rev-row"><div class="rev-label">${r.label}</div>` +
+      `<div class="rev-track"><div class="rev-fill" style="width:${Math.max(Math.round(r.value / max * 100), 3)}%"></div></div>` +
+      `<div class="rev-val">${r.text}</div></div>`).join('');
+  }
+  // תצוגת ברירת מחדל — הערכה לפי מחיר בסיס מהתיאור
+  function renderRevenue() {
+    const price = basePrice();
+    const { map, months } = revMonths();
+    const rows = months.map(ym => price
+      ? { label: monthLabel(ym), value: map[ym] * price, text: fmtNum(map[ym] * price) + ' ₪' }
+      : { label: monthLabel(ym), value: map[ym], text: map[ym] + ' ימי-כלב' });
+    const total = months.reduce((a, ym) => a + map[ym] * price, 0);
+    $('#rev-summary').innerHTML =
+      (price ? `<div class="rev-total">סה"כ בתקופה: <b>${fmtNum(total)} ₪</b></div><div class="rev-note">הערכה לפי ${fmtNum(price)} ₪ ליום (מתוך התיאור)</div>`
+             : `<div class="rev-note">לא זוהה מחיר בתיאור — הגרף מציג ימי-כלב. הוסיפו מחיר בטאב "מאפיינים".</div>`) +
+      `<button class="mini-btn" id="rev-ai" style="margin-top:8px">✨ חשב מדויק עם AI</button>`;
+    paintBars(rows);
+    const btn = $('#rev-ai'); if (btn) btn.addEventListener('click', computeRevenueAI);
+  }
+  // חישוב מדויק עם Claude — מיישם את מדיניות המחירים מהתיאור (מדרגות/עונות)
+  async function computeRevenueAI() {
+    const cfg = aiCfg();
+    const prov = cfg.proxyUrl ? { proxyUrl: cfg.proxyUrl } : (cfg.enabled && cfg.key ? { key: cfg.key } : null);
+    if (!prov) { $('#rev-summary').innerHTML = '<div class="rev-note">להפעלת חישוב AI: פתחו את צ\'אט הלקוח → ⚙️ והפעילו מצב AI.</div>'; return; }
+    const desc = (S.profile() || {}).description || '';
+    const boardings = S.boardings().filter(b => b.start && b.end).map(b => ({ start: b.start, end: b.end, days: Math.round((S.parse(b.end) - S.parse(b.start)) / 86400000) + 1 }));
+    const { months } = revMonths();
+    if (!boardings.length) { renderRevenue(); return; }
+    $('#rev-chart').innerHTML = '<div class="dd-empty">Claude מחשב…</div>';
+    const system = 'אתה מחשב הכנסות לפנסיון כלבים לפי מדיניות מחירים. מדיניות המחירים והמאפיינים: "' + desc + '". ' +
+      'תקבל JSON עם months (רשימת "YYYY-MM") ו-boardings (start,end,days). חשב לכל שהייה את מחירה לפי המדיניות (כולל מדרגות/עונות), ' +
+      'ופלג את ההכנסה לחודשים לפי מספר הימים בכל חודש. החזר JSON תקין בלבד במבנה {"YYYY-MM": <הכנסה בש"ח>} לכל חודש ברשימה, ללא טקסט נוסף.';
+    try {
+      const res = await callAI(prov, { system, tools: [], messages: [{ role: 'user', content: JSON.stringify({ months, boardings }) }] });
+      const out = (res.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+      const m = out.match(/\{[\s\S]*\}/); const parsed = m ? JSON.parse(m[0]) : null;
+      if (!parsed) throw 0;
+      const rows = months.map(ym => ({ label: monthLabel(ym), value: +parsed[ym] || 0, text: fmtNum(+parsed[ym] || 0) + ' ₪' }));
+      const total = rows.reduce((a, r) => a + r.value, 0);
+      $('#rev-summary').innerHTML =
+        `<div class="rev-total">סה"כ בתקופה: <b>${fmtNum(total)} ₪</b></div>` +
+        `<div class="rev-note">✨ חושב מדויק ע"י Claude לפי מדיניות המחירים בתיאור</div>` +
+        `<button class="mini-btn" id="rev-est" style="margin-top:8px">↺ חזרה להערכה מהירה</button>`;
+      paintBars(rows);
+      const b = $('#rev-est'); if (b) b.addEventListener('click', renderRevenue);
+    } catch (e) { $('#rev-chart').innerHTML = '<div class="dd-empty">שגיאת AI — נסו שוב.</div>'; }
   }
 
   /* ---------- שאילתת "כמה כלבים" ---------- */
