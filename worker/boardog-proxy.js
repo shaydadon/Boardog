@@ -45,9 +45,8 @@ export default {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: env.MODEL || 'claude-opus-5',
-        max_tokens: 2048,
-        output_config: { effort: 'low' }, // צ'אט קליטה — חשיבה רדודה, מהיר וזול, פחות עומס/מגבלת-קצב
+        model: env.MODEL || 'claude-haiku-4-5', // מהיר, יציב וזול לצ'אט קליטה (בלי thinking/effort)
+        max_tokens: 1024,
         system: body.system,
         tools: body.tools,
         messages: body.messages
