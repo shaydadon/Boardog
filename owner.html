@@ -15,13 +15,26 @@
   <link rel="stylesheet" href="assets/css/app.css" />
 </head>
 <body class="owner-body">
-  <div class="owner">
+  <!-- מסך כניסה לבעלי הפנסיון (צד הלקוח יהיה וואטסאפ ולכן אין שם כניסה) -->
+  <div id="owner-login" class="owner-login" hidden>
+    <div class="login-card">
+      <img class="login-logo" src="assets/logo.jpg" alt="BoarDog" />
+      <div class="login-sub">כניסת בעלי הפנסיון</div>
+      <div id="g-signin" class="g-signin"></div>
+      <div class="login-note">הכניסה מיועדת לבעל/ת הפנסיון. צד הלקוח מתנהל בוואטסאפ.</div>
+    </div>
+  </div>
+
+  <div class="owner" id="owner-app" hidden>
     <header class="owner-head">
       <div>
         <div class="oh-title">🏠 אפליקציית הפנסיון</div>
         <div class="oh-sub" id="oh-sub"></div>
       </div>
-      <a class="oh-link" href="index.html">💬 צ'אט הלקוח</a>
+      <div class="oh-actions">
+        <a class="oh-link" href="index.html">💬 צ'אט הלקוח</a>
+        <button class="oh-signout" id="owner-signout" title="התנתקות">יציאה</button>
+      </div>
     </header>
 
     <nav class="otabs" id="otabs">
@@ -63,6 +76,37 @@
 
       <!-- מאפייני הפנסיון -->
       <section class="opanel" data-panel="profile" hidden>
+        <details class="prof-guide">
+          <summary>❓ איך מגדירים את האפליקציה — מדריך מהיר</summary>
+          <div class="prof-guide-body">
+            <p>האפליקציה מותאמת אישית לפנסיון שלך. הנה מה להגדיר, לפי הסדר:</p>
+            <ol>
+              <li><b>שם הפנסיון ושם הבעלים</b> — כאן למטה. הבוט יפנה ללקוחות בשם הפנסיון שלך.</li>
+              <li><b>תיאור הפנסיון</b> — כתבו בחופשיות מי אתם ומה מציעים. <u>חשוב לכלול:</u>
+                <ul>
+                  <li><b>מחירים</b> — כולל מדרגות/עונות. למשל: "120 ₪ ליום, מעל 7 ימים 100 ₪".</li>
+                  <li><b>תנאים</b> — חיסונים נדרשים, מה להביא, שעות קבלה/איסוף, מדיניות ביטול.</li>
+                  <li><b>סגנון הפנסיון</b> — ביתי/מקצועי, עם/בלי כלובים, הפרדה לפי גודל וכו'.</li>
+                </ul>
+                הבוט קורא מכאן גם לתשובות ללקוחות וגם לחישוב הכנסות.</li>
+              <li><b>תפוסה מרבית</b> — כמה כלבים במקביל. הבוט יאכוף את זה ויידע לקוח כשמלא.</li>
+              <li><b>זמינות</b> (טאב 🕒) — הימים והשעות לפגישות היכרות. הלקוחות יראו רק אותם.</li>
+              <li><b>התראות וואטסאפ</b> (הגדרות מתקדמות למטה) — כתובת Worker לשליחת עדכונים ללקוח. אופציונלי.</li>
+              <li><b>Google Calendar</b> (טאב 📅) — סנכרון פגישות ושהיות ליומן שלך עם תזכורות.</li>
+            </ol>
+            <p class="prof-guide-tip">💡 טיפ: לחצו "✨ נתח עם AI" אחרי כתיבת התיאור — ה-AI יזהה אוטומטית את התפוסה מתוך הטקסט.</p>
+          </div>
+        </details>
+
+        <div class="prof-row">
+          <label class="prof-field">שם הפנסיון
+            <input type="text" id="prof-kennel" placeholder="למשל: הפנסיון של ג׳רי" autocomplete="off" />
+          </label>
+          <label class="prof-field">שם הבעלים
+            <input type="text" id="prof-owner" placeholder="למשל: שי" autocomplete="off" />
+          </label>
+        </div>
+
         <p class="opanel-hint">תארו את הפנסיון בחופשיות — הבוט ישתמש בתיאור כדי לענות ללקוחות, והתפוסה תיאכף לפי מה שתגדירו. לדוגמה: "פנסיון ביתי חמים עד 3 כלבים במקביל, ללא כלובים" או "פנסיון עד 40 כלבים עם חצרות, תאי לינה והפרדה לקבוצות לפי התאמה".</p>
         <textarea id="prof-desc" rows="6" placeholder="כתבו כאן את מאפייני הפנסיון…"></textarea>
         <p class="opanel-hint" style="margin-top:0">כל המידע — כולל <b>מחירים</b> (גם מדרגות/עונות, למשל "120 ₪ ליום, מעל 7 ימים 100 ₪") — נכתב בתיאור למעלה. ה-AI יקרא משם גם לתשובות ללקוח וגם לחישוב הכנסות.</p>
@@ -118,6 +162,7 @@
   <script src="assets/js/kennel.js"></script>
   <script src="assets/js/report.js"></script>
   <script src="assets/js/gcal.js"></script>
+  <script src="assets/js/owner-auth.js"></script>
   <script src="assets/js/owner.js"></script>
   <script>if ('serviceWorker' in navigator) { addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }</script>
 </body>

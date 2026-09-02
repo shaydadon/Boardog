@@ -7,7 +7,9 @@
   const S = window.BoarDogStore;
   const $ = s => document.querySelector(s);
   const pad = n => String(n).padStart(2, '0');
-  const KENNEL_NAME = 'הפנסיון של ג׳רי · שי';
+  // שם הפנסיון/הבעלים מתוך המאפיינים (עם ברירת מחדל)
+  const kName = () => ((S.profile() || {}).kennelName || '').trim() || 'הפנסיון של ג׳רי';
+  const kOwner = () => ((S.profile() || {}).ownerName || '').trim() || 'שי';
   const HOURS = [8, 10, 12, 14, 16, 18, 20];
   const DOW = S.DOW;
   const norm = s => String(s == null ? '' : s).trim().toLowerCase();
@@ -187,7 +189,7 @@
     }
   }
   function notifyCancel(rec, text) {
-    notifyCustomer(rec, `שלום 🐾 עדכון מ${KENNEL_NAME}: ${text}. לכל שאלה אנחנו כאן.`);
+    notifyCustomer(rec, `שלום 🐾 עדכון מ${kName()}: ${text}. לכל שאלה אנחנו כאן.`);
   }
   // הודעת תודה + דוח קליטה מלא ללקוח (כרטיס אינטראקטיבי בצ'אט; בוואטסאפ — טקסט בלבד)
   function notifyReport(rec, summary, text) {
@@ -216,7 +218,7 @@
       items.push({
         key: 'm:' + m.id, allDay: false,
         title: `📋 פגישת היכרות — ${m.dogName || ''} (${m.ownerName || ''})`,
-        description: 'קליטה ל' + KENNEL_NAME,
+        description: 'קליטה ל' + kName(),
         startDateTime: m.date + 'T' + time + ':00', endDateTime: m.date + 'T' + eh + ':00'
       });
     });
@@ -225,7 +227,7 @@
       items.push({
         key: 'b:' + b.id, allDay: true, start: b.start, end: b.end,
         title: `🏠 שהייה — ${b.dogName || ''} (${b.ownerName || ''})`,
-        description: 'שהייה ב' + KENNEL_NAME
+        description: 'שהייה ב' + kName()
       });
     });
     return items;
@@ -318,7 +320,7 @@
       // מצמיד את הדוח לאירוע השהייה החדש ולפגישה (כדי שכל אירוע יישא את הדוח שלו)
       if (rec && rec.id) { rec.summary = full; S.updateBoarding(rec); }
       if (meeting && meeting.id) { meeting.summary = full; S.updateMeeting(meeting); }
-      notifyReport(meeting, full, `תודה ${meeting.ownerName || ''}! 🎉 השהייה של ${meeting.dogName || 'הכלב'} ב${KENNEL_NAME} אושרה ושוריינה: ${start} → ${end}. הנה סיכום הפרטים שקלטנו 🐾`);
+      notifyReport(meeting, full, `תודה ${meeting.ownerName || ''}! 🎉 השהייה של ${meeting.dogName || 'הכלב'} ב${kName()} אושרה ושוריינה: ${start} → ${end}. הנה סיכום הפרטים שקלטנו 🐾`);
       toast('התאריכים שוריינו — נשלח דוח מלא ללקוח ✓');
       renderCalendar();
       showDay(date, S.meetingsOn(date), S.boardingsOn(date));
@@ -328,6 +330,8 @@
   /* ---------- מאפייני הפנסיון ---------- */
   function loadProfile() {
     const p = S.profile() || {};
+    if ($('#prof-kennel')) $('#prof-kennel').value = p.kennelName || '';
+    if ($('#prof-owner')) $('#prof-owner').value = p.ownerName || '';
     if ($('#prof-desc')) $('#prof-desc').value = p.description || '';
     if ($('#prof-cap')) $('#prof-cap').value = p.capacity || '';
     if ($('#prof-notify')) $('#prof-notify').value = notifyUrl();
@@ -336,9 +340,12 @@
     const cap = parseInt($('#prof-cap').value, 10);
     const prev = S.profile() || {};
     S.setProfile(Object.assign({}, prev, {
+      kennelName: ($('#prof-kennel') ? $('#prof-kennel').value.trim() : '') || undefined,
+      ownerName: ($('#prof-owner') ? $('#prof-owner').value.trim() : '') || undefined,
       description: $('#prof-desc').value.trim(),
       capacity: (cap > 0 ? cap : undefined)
     }));
+    const sub = $('#oh-sub'); if (sub) sub.textContent = kName() + ' · ' + kOwner(); // רענון הכותרת
     toast('המאפיינים נשמרו ✓ הבוט ישתמש בהם');
   }
   async function analyzeProfile() {
@@ -536,7 +543,7 @@
   }
 
   function init() {
-    $('#oh-sub').textContent = KENNEL_NAME;
+    $('#oh-sub').textContent = kName() + ' · ' + kOwner();
     initTabs();
     renderAvail();
     renderCalendar();

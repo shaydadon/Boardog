@@ -5,7 +5,15 @@
 (function (global) {
   'use strict';
 
-  const KENNEL = { name: 'הפנסיון של ג׳רי', ownerName: 'שי', capacity: 12 };
+  // שם הפנסיון ושם הבעלים ניתנים להגדרה במאפיינים (נשמרים ב-profile ומסונכרנים).
+  // ברירת מחדל אם עדיין לא הוגדרו.
+  const DEF = { name: 'הפנסיון של ג׳רי', ownerName: 'שי' };
+  const prof = () => (global.BoarDogStore && global.BoarDogStore.profile && global.BoarDogStore.profile()) || {};
+  const KENNEL = {
+    get name() { const v = (prof().kennelName || '').toString().trim(); return v || DEF.name; },
+    get ownerName() { const v = (prof().ownerName || '').toString().trim(); return v || DEF.ownerName; },
+    capacity: 12
+  };
 
   /* ---------- מאגר ידע על הפנסיון (לשאלות פתוחות) ---------- */
   KENNEL.info = {
