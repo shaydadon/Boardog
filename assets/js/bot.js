@@ -12,6 +12,30 @@
   const S = global.BoarDogStore;
   const fill = (s, a) => s.replace(/\{(\w+)\}/g, (_, k) => a[k] || '');
 
+  // --- הגנה קריטית על תאריכים: מיפוי כל תאריך לעתיד הקרוב (מונע טעות שנה, למשל 2025 במקום 2026) ---
+  const _pad2 = (n) => String(n).padStart(2, '0');
+  const _fmtDate = (dt) => dt.getFullYear() + '-' + _pad2(dt.getMonth() + 1) + '-' + _pad2(dt.getDate());
+  function futureYear(str) {
+    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(str == null ? '' : str).trim());
+    if (!m) return str;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let dt = new Date(today.getFullYear(), +m[2] - 1, +m[3]);
+    if (dt < today) dt = new Date(today.getFullYear() + 1, +m[2] - 1, +m[3]);
+    return _fmtDate(dt);
+  }
+  // מנרמל טווח: start לעתיד הקרוב, end באותה שנה או אחריה כך ש-end >= start
+  function futureRange(startStr, endStr) {
+    const ms = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(startStr == null ? '' : startStr).trim());
+    const me = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(endStr == null ? '' : endStr).trim());
+    if (!ms || !me) return { start: futureYear(startStr), end: futureYear(endStr) };
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let start = new Date(today.getFullYear(), +ms[2] - 1, +ms[3]);
+    if (start < today) start = new Date(today.getFullYear() + 1, +ms[2] - 1, +ms[3]);
+    let end = new Date(start.getFullYear(), +me[2] - 1, +me[3]);
+    if (end < start) end = new Date(start.getFullYear() + 1, +me[2] - 1, +me[3]);
+    return { start: _fmtDate(start), end: _fmtDate(end) };
+  }
+
   /* ---------------- מנוע מונחה ---------------- */
   function ScriptedBot(io, saved) {
     saved = saved || {};
@@ -202,18 +226,20 @@
       return { ok: true, booked: slot.label };
     }
     if (name === 'check_dates') {
-      const r = S.dogsInRange(input.start_date, input.end_date);
+      const rng = futureRange(input.start_date, input.end_date); // הגנת תאריכים
+      const r = S.dogsInRange(rng.start, rng.end);
       const cap = S.capacity();
       // קישור התאריכים המבוקשים לפגישה האחרונה של אותו בעלים (לאישור בפגישה)
       const n = String(input.owner_name || '').trim().toLowerCase();
       const mine = S.meetings().filter(m => String(m.ownerName || '').trim().toLowerCase() === n);
       const last = mine[mine.length - 1];
-      if (last) { last.requestedStart = input.start_date; last.requestedEnd = input.end_date; S.updateMeeting(last); }
-      return { available: r.peak < cap, dogs_in_range: r.peak, capacity: cap };
+      if (last) { last.requestedStart = rng.start; last.requestedEnd = rng.end; S.updateMeeting(last); }
+      return { available: r.peak < cap, dogs_in_range: r.peak, capacity: cap, start_date: rng.start, end_date: rng.end };
     }
     if (name === 'book_boarding') {
-      S.addBoarding({ dogName: input.dog_name || '', ownerName: input.owner_name || '', start: input.start_date, end: input.end_date, customerId: S.customerId() });
-      return { ok: true, from: input.start_date, to: input.end_date };
+      const rng = futureRange(input.start_date, input.end_date); // הגנת תאריכים
+      S.addBoarding({ dogName: input.dog_name || '', ownerName: input.owner_name || '', start: rng.start, end: rng.end, customerId: S.customerId() });
+      return { ok: true, from: rng.start, to: rng.end };
     }
     if (name === 'save_summary') return { ok: true };
     return { error: 'unknown tool' };
@@ -250,6 +276,9 @@
       m.ownerName = m.ownerName || brd.ownerName;
     }
     Object.keys(m).forEach(k => { if (m[k] == null || m[k] === '') delete m[k]; });
+    // הגנת תאריכים גם בדוח — למקרה שהמודל העביר שנה שגויה ל-save_summary
+    if (m.requestedStart && m.requestedEnd) { const r = futureRange(m.requestedStart, m.requestedEnd); m.requestedStart = r.start; m.requestedEnd = r.end; }
+    if (m.boardingStart && m.boardingEnd) { const r = futureRange(m.boardingStart, m.boardingEnd); m.boardingStart = r.start; m.boardingEnd = r.end; }
     // מיזוג עם פרטים קודמים (לקוח חוזר) — מה שנמסר עכשיו גובר
     const out = Object.assign({}, prior, m, { customerId: cid });
     delete out.id; delete out.updatedAt;
@@ -268,7 +297,8 @@
 
     function dynamicSystem() {
       const p = S.profile() || {};
-      let extra = '';
+      const today = S.key(new Date()); // YYYY-MM-DD
+      let extra = `\n\nהיום ${today}. כל התאריכים שתפיק/י (פגישות, שהיות, בדיקות יומן) חייבים להיות היום או אחריו ובפורמט YYYY-MM-DD. כשהלקוח נוקב ביום/חודש בלי שנה — השתמש/י בשנה הנוכחית, ואם התאריך כבר עבר השנה — בשנה הבאה. לעולם אל תשתמש/י בשנה שעברה.`;
       if (p.description) extra += `\n\nמאפייני הפנסיון (כפי שהגדיר ${K.ownerName}):\n${p.description}`;
       extra += `\n\nתפוסה מרבית: ${S.capacity()} כלבים בו-זמנית. אם בתאריכים המבוקשים כבר מלאה התפוסה — יידע/י את הלקוח שהפנסיון מלא באותם תאריכים.`;
       extra += `\n\nאם הלקוח שואל על מחיר או הצעת מחיר — חשב/י לפי מדיניות המחירים שבתיאור הפנסיון למעלה (כולל מדרגות/עונות אם צוינו) ומספר הימים המבוקשים.`;
