@@ -177,7 +177,8 @@
     const cfg = io.cfg || {};
     const messages = Array.isArray(saved.messages) ? saved.messages : [];
     let lastSummary = saved.lastSummary || null;
-    function getState() { return { messages, lastSummary }; }
+    let lastBotText = saved.lastBotText || ''; // השאלה/הודעה האחרונה שהבוט שלח — לחזרה עליה אם ה-AI נופל
+    function getState() { return { messages, lastSummary, lastBotText }; }
 
     function dynamicSystem() {
       const p = S.profile() || {};
@@ -210,14 +211,16 @@
           res = await callWithRetry();
         } catch (e) {
           io.typing(false);
-          // שומרים את השיחה: חוזרים למצב תקין אחרון ומבקשים לשלוח שוב (בלי להתחיל מחדש)
+          // שומרים את השיחה: חוזרים למצב תקין אחרון וחוזרים על השאלה הקודמת (בלי להתחיל מחדש)
           if (typeof anchor === 'number') messages.length = anchor;
-          io.bot({ text: 'אופס, הייתה לי תקלה רגעית 🙏 אפשר לשלוח שוב את ההודעה האחרונה?' });
+          io.bot({ text: lastBotText
+            ? 'סליחה, הייתה לי תקלה רגעית 🙏 נחזור רגע לשאלה:\n' + lastBotText
+            : 'סליחה, הייתה לי תקלה רגעית 🙏 אפשר לשלוח שוב?' });
           return;
         }
         messages.push({ role: 'assistant', content: res.content });
         const texts = res.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-        if (texts) io.bot({ text: texts });
+        if (texts) { lastBotText = texts; io.bot({ text: texts }); }
         const toolUses = res.content.filter(b => b.type === 'tool_use');
         if (res.stop_reason === 'tool_use' && toolUses.length) {
           const results = await Promise.all(toolUses.map(async tu => {
