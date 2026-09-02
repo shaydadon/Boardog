@@ -3,4 +3,14 @@ main = "boardog-proxy.js"
 compatibility_date = "2024-11-01"
 
 [vars]
-MODEL = "claude-opus-5"
+# Sonnet 5 — עברית רהוטה ויציבה לצ'אט הקליטה (thinking אדפטיבי + effort נמוך בקוד).
+MODEL = "claude-sonnet-5"
+
+# הגבלת קצב אמינה לכל IP דרך Durable Object (30 בקשות ב-60 שניות).
+[[durable_objects.bindings]]
+name = "RATE_LIMITER_DO"
+class_name = "RateLimiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RateLimiter"]

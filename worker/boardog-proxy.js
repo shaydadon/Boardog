@@ -15,6 +15,19 @@ const ALLOWED = [
   'http://localhost:8080',
   'http://127.0.0.1:8080'
 ];
+
+// הגבלת קצב לכל IP — הגנה על מפתח ה-Anthropic מפני שריפה/ניצול לרעה.
+// גבוה יחסית כי לולאת ה-Tool Use שולחת כמה קריאות לכל הודעת לקוח.
+const RL_LIMIT = 30, RL_WINDOW_MS = 60000;
+const rlHits = new Map(); // ip -> [timestamps] (גיבוי בזיכרון לכל isolate)
+function memRateLimited(ip) {
+  const now = Date.now();
+  const arr = (rlHits.get(ip) || []).filter(ts => now - ts < RL_WINDOW_MS);
+  arr.push(now);
+  rlHits.set(ip, arr);
+  if (rlHits.size > 5000) rlHits.clear();
+  return arr.length > RL_LIMIT;
+}
 function cors(origin) {
   const allow = ALLOWED.indexOf(origin) !== -1 ? origin : ALLOWED[0];
   return {
@@ -32,6 +45,20 @@ export default {
     const origin = request.headers.get('Origin') || '';
     if (request.method === 'OPTIONS') return new Response(null, { headers: cors(origin) });
     if (request.method !== 'POST') return json({ error: 'method' }, 405, origin);
+
+    // הגבלת קצב לפי IP: עדיפות ל-Durable Object (מונה עקבי בכל הקצה), גיבוי בזיכרון.
+    const ip = request.headers.get('CF-Connecting-IP') || 'anon';
+    let limited = false;
+    if (env.RATE_LIMITER_DO) {
+      try {
+        const stub = env.RATE_LIMITER_DO.get(env.RATE_LIMITER_DO.idFromName(ip));
+        limited = (await (await stub.fetch('https://rl/hit')).json()).limited;
+      } catch (e) { limited = memRateLimited(ip); }
+    } else {
+      limited = memRateLimited(ip);
+    }
+    if (limited) return json({ error: 'rate_limited', detail: 'יותר מדי בקשות. נסו שוב בעוד דקה.' }, 429, origin);
+
     if (!env.ANTHROPIC_API_KEY) return json({ error: 'server missing ANTHROPIC_API_KEY' }, 500, origin);
 
     let body;
@@ -59,3 +86,17 @@ export default {
     return new Response(raw, { status: 200, headers: { 'content-type': 'application/json', ...cors(origin) } });
   }
 };
+
+// Durable Object – מונה בקשות עקבי לכל IP (חלון קבוע של 60 שניות).
+// גרסת SQLite (new_sqlite_classes) כדי לעבוד גם בתוכנית החינמית.
+export class RateLimiter {
+  constructor(state) { this.state = state; }
+  async fetch() {
+    const now = Date.now();
+    let d = await this.state.storage.get('d');
+    if (!d || now - d.start >= RL_WINDOW_MS) d = { start: now, count: 0 };
+    d.count++;
+    await this.state.storage.put('d', d);
+    return new Response(JSON.stringify({ limited: d.count > RL_LIMIT }), { headers: { 'content-type': 'application/json' } });
+  }
+}
