@@ -139,7 +139,26 @@
     { name: 'book_meeting', description: 'משריין פגישת היכרות.', input_schema: { type: 'object', properties: { slot_id: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['slot_id'], additionalProperties: true } },
     { name: 'check_dates', description: 'בודק ביומן אם תאריכי שהייה פנויים וכמה כלבים כבר רשומים בטווח (בלי לשריין).', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
     { name: 'book_boarding', description: 'משריין שהייה בפנסיון לטווח תאריכים (רק ללקוח חוזר).', input_schema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' }, dog_name: { type: 'string' }, owner_name: { type: 'string' } }, required: ['start_date', 'end_date'], additionalProperties: true } },
-    { name: 'save_summary', description: 'שומר את סיכום הקליטה עבור בעל הפנסיון.', input_schema: { type: 'object', properties: {}, additionalProperties: true } }
+    { name: 'save_summary', description: 'שומר סיכום קליטה מלא לבעל הפנסיון. חובה למלא כל שדה שכבר ידוע לך מהשיחה — אל תשאיר/י ריק פרט שהלקוח כבר מסר.', input_schema: { type: 'object', properties: {
+      owner_name: { type: 'string', description: 'שם הבעלים' },
+      dog_name: { type: 'string', description: 'שם הכלב' },
+      breed: { type: 'string', description: 'גזע' },
+      age: { type: 'string', description: 'גיל' },
+      size: { type: 'string', description: 'גודל (קטן/בינוני/גדול)' },
+      neutered: { type: 'string', description: 'מעוקר/מסורס' },
+      vaccinated: { type: 'string', description: 'חיסונים בתוקף' },
+      flea_tick: { type: 'string', description: 'טיפול פרעושים/קרציות' },
+      health: { type: 'string', description: 'מצב בריאות/תרופות' },
+      with_dogs: { type: 'string', description: 'התאמה לכלבים אחרים' },
+      aggression: { type: 'string', description: 'עבר תוקפנות' },
+      food: { type: 'string', description: 'סוג אוכל' },
+      schedule: { type: 'string', description: 'לו"ז/הרגלים' },
+      meeting: { type: 'string', description: 'מועד פגישת ההיכרות שנקבע' },
+      boarding_start: { type: 'string', description: 'תחילת שהייה שנשוריינה (לקוח חוזר), YYYY-MM-DD' },
+      boarding_end: { type: 'string', description: 'סוף שהייה שנשוריינה (לקוח חוזר), YYYY-MM-DD' },
+      requested_start: { type: 'string', description: 'תחילת תאריכים מבוקשים (לאישור בפגישה), YYYY-MM-DD' },
+      requested_end: { type: 'string', description: 'סוף תאריכים מבוקשים (לאישור בפגישה), YYYY-MM-DD' }
+    }, additionalProperties: true } }
   ];
 
   async function runTool(name, input) {
@@ -173,6 +192,39 @@
     }
     if (name === 'save_summary') return { ok: true };
     return { error: 'unknown tool' };
+  }
+
+  // ממיר את פלט save_summary (snake_case) למבנה שהדוח מצפה לו, ומשלים
+  // פרטים מנתוני היומן שהבוט שריין בפועל (פגישה/שהייה) כדי שהדוח לא יהיה חסר
+  function buildSummary(input) {
+    input = input || {};
+    const m = {
+      ownerName: input.owner_name, dogName: input.dog_name, breed: input.breed, age: input.age,
+      size: input.size, neutered: input.neutered, vaccinated: input.vaccinated, fleaTick: input.flea_tick,
+      health: input.health, withDogs: input.with_dogs, aggression: input.aggression, food: input.food,
+      schedule: input.schedule, meeting: input.meeting,
+      boardingStart: input.boarding_start, boardingEnd: input.boarding_end,
+      requestedStart: input.requested_start, requestedEnd: input.requested_end
+    };
+    const cid = S.customerId();
+    const mtg = S.meetings().filter(x => x.customerId === cid).slice(-1)[0];
+    if (mtg) {
+      m.ownerName = m.ownerName || mtg.ownerName;
+      m.dogName = m.dogName || mtg.dogName;
+      m.breed = m.breed || mtg.breed;
+      m.meeting = m.meeting || (mtg.date ? mtg.date + (mtg.time ? ' ' + mtg.time : '') : '');
+      m.requestedStart = m.requestedStart || mtg.requestedStart;
+      m.requestedEnd = m.requestedEnd || mtg.requestedEnd;
+    }
+    const brd = S.boardings().filter(x => x.customerId === cid).slice(-1)[0];
+    if (brd) {
+      m.boardingStart = m.boardingStart || brd.start;
+      m.boardingEnd = m.boardingEnd || brd.end;
+      m.dogName = m.dogName || brd.dogName;
+      m.ownerName = m.ownerName || brd.ownerName;
+    }
+    Object.keys(m).forEach(k => { if (m[k] == null || m[k] === '') delete m[k]; });
+    return m;
   }
 
   function AiBot(io, saved) {
@@ -257,7 +309,7 @@
         const toolUses = res.content.filter(b => b.type === 'tool_use');
         if (res.stop_reason === 'tool_use' && toolUses.length) {
           const results = await Promise.all(toolUses.map(async tu => {
-            if (tu.name === 'save_summary') lastSummary = tu.input || {};
+            if (tu.name === 'save_summary') lastSummary = buildSummary(tu.input || {});
             return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(await runTool(tu.name, tu.input || {})) };
           }));
           messages.push({ role: 'user', content: results });
