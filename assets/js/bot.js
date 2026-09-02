@@ -161,7 +161,7 @@
     '(4) בלי הרצאות ובלי הומור מוגזם — טבעי, אנושי וקצר. ' +
     'אל תחזור/י על שאלה שכבר נענתה; הסק/י פרטים מהקונטקסט (למשל אם הלקוח כתב "מלטז בן 3" — כבר יש לך גזע וגיל). ' +
     'אם הלקוח מציין שהשיחה נקטעה/קרסה, או שכבר דיברתם — התנצל/י בחום, הודה/י לו, והמשך/י בעדינות מאיפה שאפשר בלי להתחיל מחדש.\n' +
-    'אם הלקוח שואל כמה כלבים יהיו / אם יהיו כלבים אחרים בתקופת השהייה — *חובה לקרוא ל-check_dates בכל פעם מחדש* עם התאריכים המבוקשים, ולמסור את המספר dogs_in_range **בדיוק כפי שחזר** (זהו המספר הכולל של הכלבים במקביל, כולל הכלב של הלקוח אם כבר שוריין). *אסור לנחש, אסור לומר מספר אחר, ואסור לדבר על התפוסה המרבית במקום המספר בפועל.* אם עדיין אין תאריכים — בקש/י אותם קודם. תוכל/י להשתמש ב-answer_he שחוזר מהכלי כבסיס לתשובה.\n' +
+    'אם הלקוח שואל כמה כלבים יהיו / אם יהיו כלבים אחרים בתקופת השהייה — *חובה לקרוא ל-check_dates בכל פעם מחדש*. הכלי כבר חישב את התשובה: מסור/י ללקוח את השדה answer_he **כמעט מילה במילה**, ואת המספר other_dogs (כלבים אחרים) בדיוק כפי שחזר. *אסור לחשב או לחסר בעצמך, אסור לנחש מספר, ואסור לדבר על התפוסה המרבית במקום המספר בפועל.* אם עדיין אין תאריכים — בקש/י אותם קודם.\n' +
     'תחילה שאל/י לשם הפונה, וקרא/י ל-lookup_customer עם owner_name כדי לבדוק אם זה לקוח קיים.\n' +
     '• אם returning=true (לקוח קיים): דלג/י על התשאול לגמרי, ברך/י אותו בשמו, ובקש/י ישירות את תאריכי השהייה. ' +
     'קרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
@@ -241,19 +241,33 @@
     if (name === 'check_dates') {
       // רענון מהשרת קודם — כדי לראות שהיות שהבעלים הוסיף ממכשיר אחר (נתונים עדכניים)
       if (window.BoarDogCloud && window.BoarDogCloud.refresh) { try { await window.BoarDogCloud.refresh(); } catch (e) {} }
-      const rng = futureRange(input.start_date, input.end_date); // הגנת תאריכים
-      const r = S.dogsInRange(rng.start, rng.end);
+      const owner = String(input.owner_name || '').trim().toLowerCase();
+      // אם ללקוח כבר יש שהייה מוזמנת — טווח השהייה שלו הוא מקור האמת
+      const myBrd = S.boardings().filter(b => String(b.ownerName || '').trim().toLowerCase() === owner).slice(-1)[0];
+      const rng = myBrd ? { start: myBrd.start, end: myBrd.end } : futureRange(input.start_date, input.end_date);
       const cap = S.capacity();
+      // ספירה יומית: הקוד מחשב את מספר הכלבים האחרים (בלי הכלב של השואל) — כדי שהמודל לא יחשב בעצמו
+      const all = S.boardings();
+      let totalPeak = 0, othersPeak = 0;
+      for (let d = new Date(S.parse(rng.start)); d <= S.parse(rng.end); d.setDate(d.getDate() + 1)) {
+        const dk = S.key(new Date(d));
+        const onDay = all.filter(b => dk >= b.start && dk <= b.end);
+        totalPeak = Math.max(totalPeak, onDay.length);
+        othersPeak = Math.max(othersPeak, onDay.filter(b => String(b.ownerName || '').trim().toLowerCase() !== owner).length);
+      }
       // קישור התאריכים המבוקשים לפגישה האחרונה של אותו בעלים (לאישור בפגישה)
-      const n = String(input.owner_name || '').trim().toLowerCase();
-      const mine = S.meetings().filter(m => String(m.ownerName || '').trim().toLowerCase() === n);
+      const mine = S.meetings().filter(m => String(m.ownerName || '').trim().toLowerCase() === owner);
       const last = mine[mine.length - 1];
       if (last) { last.requestedStart = rng.start; last.requestedEnd = rng.end; S.updateMeeting(last); }
-      const spots = Math.max(0, cap - r.peak);
+      const dog = input.dog_name || 'הכלב שלך';
+      const spots = Math.max(0, cap - totalPeak - (myBrd ? 0 : 1));
+      const answer = othersPeak > 0
+        ? `בתאריכים ${rng.start}–${rng.end} רשומים ${othersPeak} כלבים אחרים בפנסיון בנוסף ל${dog} (כלומר ${othersPeak + 1} כלבים סה״כ). תפוסה מרבית ${cap}.`
+        : `בתאריכים ${rng.start}–${rng.end} אין כלבים אחרים רשומים — ${dog} צפוי/ה להיות לבד בפנסיון. תפוסה מרבית ${cap}.`;
       return {
         start_date: rng.start, end_date: rng.end,
-        dogs_in_range: r.peak, capacity: cap, spots_left: spots, available: r.peak < cap,
-        answer_he: `בתאריכים ${rng.start}–${rng.end} רשומים ביומן ${r.peak} כלבים במקביל (מתוך תפוסה מרבית ${cap}, נותרו ${spots} מקומות).`
+        other_dogs: othersPeak, total_dogs_with_this_dog: othersPeak + 1, capacity: cap, spots_left: spots,
+        answer_he: answer
       };
     }
     if (name === 'book_boarding') {
