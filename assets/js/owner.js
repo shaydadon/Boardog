@@ -204,6 +204,63 @@
 
   function refreshDay(date) { renderCalendar(); showDay(date, S.meetingsOn(date), S.boardingsOn(date)); }
 
+  /* ---------- סנכרון ל-Google Calendar ---------- */
+  function gcalItems() {
+    const today = S.key(new Date());
+    const items = [];
+    S.meetings().forEach(m => {
+      if (!m.date || m.date < today) return; // פגישות עתידיות בלבד ליצירה
+      const time = (m.time && /^\d{2}:\d{2}$/.test(m.time)) ? m.time : '16:00';
+      const eh = pad(Math.min(23, parseInt(time.slice(0, 2), 10) + 1)) + time.slice(2);
+      items.push({
+        key: 'm:' + m.id, allDay: false,
+        title: `📋 פגישת היכרות — ${m.dogName || ''} (${m.ownerName || ''})`,
+        description: 'קליטה ל' + KENNEL_NAME,
+        startDateTime: m.date + 'T' + time + ':00', endDateTime: m.date + 'T' + eh + ':00'
+      });
+    });
+    S.boardings().forEach(b => {
+      if (!b.end || b.end < today) return; // שהיות שעדיין לא הסתיימו
+      items.push({
+        key: 'b:' + b.id, allDay: true, start: b.start, end: b.end,
+        title: `🏠 שהייה — ${b.dogName || ''} (${b.ownerName || ''})`,
+        description: 'שהייה ב' + KENNEL_NAME
+      });
+    });
+    return items;
+  }
+  function gcalValidKeys() {
+    return S.meetings().map(m => 'm:' + m.id).concat(S.boardings().map(b => 'b:' + b.id));
+  }
+  function refreshGCalUI() {
+    const configured = window.BoarDogGCal && BoarDogGCal.configured();
+    const row = $('#bd-gcal-row'), conn = $('#bd-gcal-connected');
+    if (row) row.hidden = !!configured;
+    if (conn) conn.hidden = !configured;
+  }
+  function initGCal() {
+    const input = $('#bd-gcal-client'), btn = $('#bd-gcal-sync'), change = $('#bd-gcal-change');
+    if (!input || !btn || !window.BoarDogGCal) return;
+    input.value = BoarDogGCal.clientId();
+    refreshGCalUI();
+    if (change) change.addEventListener('click', () => { const row = $('#bd-gcal-row'), conn = $('#bd-gcal-connected'); if (row) row.hidden = false; if (conn) conn.hidden = true; input.focus(); });
+    btn.addEventListener('click', async () => {
+      const cid = input.value.trim();
+      if (!cid) { toast('הזינו קודם Google Client ID'); return; }
+      BoarDogGCal.setClientId(cid); refreshGCalUI();
+      const items = gcalItems();
+      if (!items.length) { toast('אין פגישות או שהיות עתידיות לסנכרון'); return; }
+      const old = btn.textContent; btn.disabled = true; btn.textContent = 'מסנכרן…';
+      try {
+        const r = await BoarDogGCal.sync(items, gcalValidKeys());
+        toast('סונכרנו ' + r.added + ' אירועים ליומן Google ✓');
+      } catch (e) {
+        try { console.warn('[BoarDog] GCal sync failed:', e && e.message); } catch (_) {}
+        toast('הסנכרון נכשל' + (e && e.message ? ' (' + e.message + ')' : ''));
+      } finally { btn.disabled = false; btn.textContent = old; }
+    });
+  }
+
   // ניקוי מלא של היומן — כל הפגישות, השהיות והדוחות (זמינות ומאפיינים נשמרים)
   function clearCalendar() {
     if (!confirm('לנקות את כל היומן?\nכל הפגישות, השהיות והדוחות יימחקו לצמיתות — בכל המכשירים. הזמינות והמאפיינים יישארו.')) return;
@@ -468,6 +525,7 @@
     $('#cal-prev').addEventListener('click', () => { viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1); renderCalendar(); });
     $('#cal-next').addEventListener('click', () => { viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1); renderCalendar(); });
     const clearBtn = $('#clear-cal'); if (clearBtn) clearBtn.addEventListener('click', clearCalendar);
+    initGCal();
     const today = new Date().toISOString().slice(0, 10);
     $('#ask-from').value = today; $('#ask-to').value = today;
     $('#ask-go').addEventListener('click', askRange);

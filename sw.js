@@ -1,5 +1,5 @@
 /* BoarDog – Service Worker (PWA, עבודה לא מקוונת) */
-const CACHE = 'boardog-v16';
+const CACHE = 'boardog-v17';
 const ASSETS = [
   '.',
   'index.html',
@@ -10,6 +10,7 @@ const ASSETS = [
   'assets/js/kennel.js',
   'assets/js/bot.js',
   'assets/js/report.js',
+  'assets/js/gcal.js',
   'assets/js/app.js',
   'assets/js/owner.js',
   'assets/icon.svg',

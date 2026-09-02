@@ -44,6 +44,13 @@
         <div class="cal-legend"><span>📋 פגישת היכרות</span><span>🏠 שהייה</span></div>
         <div class="day-detail" id="day-detail"></div>
         <div class="cal-tools"><button id="clear-cal" class="danger-btn">🧹 נקה יומן</button></div>
+        <div class="gcal-box">
+          <div class="gcal-title">📅 סנכרון ל-Google Calendar</div>
+          <p class="gcal-hint">דחיפת כל הפגישות והשהיות ליומן Google שלך, כל אירוע עם תזכורת מייל ופופאפ אוטומטית.</p>
+          <div id="bd-gcal-row"><input id="bd-gcal-client" type="text" placeholder="Google OAuth Client ID (xxxx.apps.googleusercontent.com)" autocomplete="off" spellcheck="false" /></div>
+          <div class="gcal-connected" id="bd-gcal-connected" hidden><span>✅ מחובר ל-Google Calendar</span><button type="button" class="link-btn" id="bd-gcal-change">שנה מזהה</button></div>
+          <button id="bd-gcal-sync" class="gcal-sync-btn">📅 סנכרן ליומן Google</button>
+        </div>
       </section>
 
       <!-- זמינות -->
@@ -108,6 +115,7 @@
   <script src="assets/js/cloud.js"></script>
   <script src="assets/js/kennel.js"></script>
   <script src="assets/js/report.js"></script>
+  <script src="assets/js/gcal.js"></script>
   <script src="assets/js/owner.js"></script>
   <script>if ('serviceWorker' in navigator) { addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }</script>
 </body>
