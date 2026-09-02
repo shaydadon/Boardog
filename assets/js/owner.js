@@ -204,6 +204,17 @@
 
   function refreshDay(date) { renderCalendar(); showDay(date, S.meetingsOn(date), S.boardingsOn(date)); }
 
+  // ניקוי מלא של היומן — כל הפגישות, השהיות והדוחות (זמינות ומאפיינים נשמרים)
+  function clearCalendar() {
+    if (!confirm('לנקות את כל היומן?\nכל הפגישות, השהיות והדוחות יימחקו לצמיתות — בכל המכשירים. הזמינות והמאפיינים יישארו.')) return;
+    const done = () => { seen.meet.clear(); seen.board.clear(); $('#day-detail').innerHTML = ''; renderCalendar(); toast('היומן נוקה ✓'); };
+    if (window.BoarDogCloud && window.BoarDogCloud.clearAll) window.BoarDogCloud.clearAll().then(done, done);
+    else {
+      ['boardog.meetings', 'boardog.boardings', 'boardog.summaries'].forEach(k => { try { localStorage.setItem(k, '[]'); } catch (e) {} });
+      done();
+    }
+  }
+
   // הסרת יום בודד משהייה: קיצור מהקצה, או פיצול אם זה יום באמצע
   function removeBoardingDay(id, dk) {
     const b = S.boardings().find(x => x.id === id);
@@ -456,6 +467,7 @@
     $('#save-avail').addEventListener('click', saveAvail);
     $('#cal-prev').addEventListener('click', () => { viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1); renderCalendar(); });
     $('#cal-next').addEventListener('click', () => { viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1); renderCalendar(); });
+    const clearBtn = $('#clear-cal'); if (clearBtn) clearBtn.addEventListener('click', clearCalendar);
     const today = new Date().toISOString().slice(0, 10);
     $('#ask-from').value = today; $('#ask-to').value = today;
     $('#ask-go').addEventListener('click', askRange);

@@ -150,7 +150,20 @@
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: false } });
     seedIfEmpty().then(pull).then(() => { subscribe(); startAutoRefresh(); });
   }
-  // חשיפה לרענון יזום + שליחת הודעה ללקוח (מדשבורד הבעלים)
-  window.BoarDogCloud = { refresh: pull, sendCustomerMessage: sendCustomerMessage };
+  // ניקוי מלא של היומן (פגישות, שהיות, דוחות) — מקומי + שרת. זמינות ומאפיינים נשמרים.
+  async function clearAll() {
+    [K.meet, K.board, K.sum].forEach(k => setLocal(k, []));
+    emit();
+    if (sb) {
+      try {
+        await sb.from('meetings').delete().eq('kennel', KENNEL_ID);
+        await sb.from('boardings').delete().eq('kennel', KENNEL_ID);
+        await sb.from('summaries').delete().eq('kennel', KENNEL_ID);
+      } catch (e) {}
+    }
+  }
+
+  // חשיפה לרענון יזום + שליחת הודעה ללקוח + ניקוי יומן (מדשבורד הבעלים)
+  window.BoarDogCloud = { refresh: pull, sendCustomerMessage: sendCustomerMessage, clearAll: clearAll };
   document.addEventListener('DOMContentLoaded', init);
 })();

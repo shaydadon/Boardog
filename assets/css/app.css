@@ -80,6 +80,11 @@ html, body { margin: 0; height: 100%; background: #0b141a; overflow-x: hidden;
 .report-btn { border: 1px solid #cfe3d8; background: #f1f8f4; color: #147a4a; border-radius: 7px;
   font-size: 12px; padding: 3px 8px; cursor: pointer; margin-inline-start: 6px; }
 .report-btn:hover { background: #e3f2ea; }
+/* כפתור ניקוי יומן */
+.cal-tools { margin-top: 14px; display: flex; justify-content: center; }
+.danger-btn { border: 1px solid #f0c4bc; background: #fdecec; color: #a8321a; border-radius: 9px;
+  font-size: 13px; font-weight: 600; padding: 8px 16px; cursor: pointer; }
+.danger-btn:hover { background: #fadbd6; }
 
 /* כפתורי מענה מהיר */
 .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px; justify-content: flex-end; }
