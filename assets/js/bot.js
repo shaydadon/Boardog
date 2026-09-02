@@ -191,8 +191,18 @@
       extra += `\n\nאם הלקוח שואל על מחיר או הצעת מחיר — חשב/י לפי מדיניות המחירים שבתיאור הפנסיון למעלה (כולל מדרגות/עונות אם צוינו) ומספר הימים המבוקשים.`;
       return SYSTEM + extra;
     }
+    // מנקה בלוקי "חשיבה" (thinking) מההיסטוריה — נשארו מהרצות Opus קודמות ועלולים להיכשל
+    function sanitize(msgs) {
+      return msgs.map(m => {
+        if (m.role === 'assistant' && Array.isArray(m.content)) {
+          const c = m.content.filter(b => b.type !== 'thinking' && b.type !== 'redacted_thinking');
+          return { role: 'assistant', content: c.length ? c : '' };
+        }
+        return m;
+      });
+    }
     async function call() {
-      const payload = { system: dynamicSystem(), tools: TOOLS, messages };
+      const payload = { system: dynamicSystem(), tools: TOOLS, messages: sanitize(messages) };
       return cfg.proxyUrl ? callProxy(cfg.proxyUrl, payload) : callClaude(cfg.key, payload);
     }
     // ניסיונות חוזרים לשגיאות זמניות (עומס 529 / מגבלת קצב 429 / רשת) לפני ויתור
@@ -214,12 +224,14 @@
           res = await callWithRetry();
         } catch (e) {
           io.typing(false);
-          try { console.warn('[BoarDog] AI call failed:', e && e.message); } catch (_) {}
+          try { console.warn('[BoarDog] AI call failed:', e && e.message, e && e.detail); } catch (_) {}
+          // קוד שגיאה קצר לאבחון (מוצג ללקוח בסוגריים)
+          const code = (e && e.status) ? (' (שגיאה ' + e.status + ')') : (e && e.message ? ' (' + e.message + ')' : '');
           // שומרים את השיחה: חוזרים למצב תקין אחרון וחוזרים על השאלה הקודמת (בלי להתחיל מחדש)
           if (typeof anchor === 'number') messages.length = anchor;
           io.bot({ text: lastBotText
-            ? 'סליחה, הייתה לי תקלה רגעית 🙏 נחזור רגע לשאלה:\n' + lastBotText
-            : 'סליחה, הייתה לי תקלה רגעית 🙏 אפשר לשלוח שוב?' });
+            ? 'סליחה, הייתה לי תקלה רגעית 🙏' + code + ' נחזור רגע לשאלה:\n' + lastBotText
+            : 'סליחה, הייתה לי תקלה רגעית 🙏' + code + ' אפשר לשלוח שוב?' });
           return;
         }
         messages.push({ role: 'assistant', content: res.content });
@@ -249,9 +261,16 @@
     };
   }
 
+  async function httpErr(prefix, res) {
+    let detail = '';
+    try { detail = (await res.text()).slice(0, 300); } catch (e) {}
+    const err = new Error(prefix + ' ' + res.status);
+    err.status = res.status; err.detail = detail;
+    return err;
+  }
   async function callProxy(url, payload) {
     const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!res.ok) throw new Error('proxy ' + res.status);
+    if (!res.ok) throw await httpErr('proxy', res);
     return res.json();
   }
   async function callClaude(key, payload) {
@@ -260,7 +279,7 @@
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1024, system: payload.system, tools: payload.tools, messages: payload.messages })
     });
-    if (!res.ok) throw new Error('claude ' + res.status);
+    if (!res.ok) throw await httpErr('claude', res);
     return res.json();
   }
 
