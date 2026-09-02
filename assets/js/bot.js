@@ -43,7 +43,13 @@
       }
       if (step < INTAKE.length) {
         const s = INTAKE[step];
-        io.bot({ text: fill(s.q, answers), choices: s.choices || null });
+        let q = fill(s.q, answers);
+        // שאלת עיקור/סירוס מותאמת למין הכלב
+        if (s.key === 'neutered') {
+          const fem = /נקבה/.test(answers.sex || '');
+          q = fem ? `האם ${answers.dogName || 'הכלבה'} מעוקרת?` : `האם ${answers.dogName || 'הכלב'} מסורס?`;
+        }
+        io.bot({ text: q, choices: s.choices || null });
       } else offerSlots();
     }
 
@@ -133,7 +139,8 @@
     'תחילה שאל/י לשם הפונה, וקרא/י ל-lookup_customer עם owner_name כדי לבדוק אם זה לקוח קיים.\n' +
     '• אם returning=true (לקוח קיים): דלג/י על התשאול לגמרי, ברך/י אותו בשמו, ובקש/י ישירות את תאריכי השהייה. ' +
     'קרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
-    '• אם לקוח חדש: אסוף/אספי שם כלב, גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, אלרגיות, בריאות/תרופות, ' +
+    '• אם לקוח חדש: אסוף/אספי שם כלב, מין (זכר/נקבה), גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, אלרגיות, בריאות/תרופות, ' +
+    'שאל/י את המין לפני שאלת העיקור/סירוס, והתאם/י את הניסוח למין: לזכר "האם הוא מסורס?", לנקבה "האם היא מעוקרת?". ' +
     'התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז — הכול בזרימה טבעית, שאלה אחת בכל פעם, לא כרשימה. ' +
     'ואז קרא/י ל-get_available_slots והצג/י 3–5 מועדים. ' +
     'כשהלקוח בוחר מועד — גם בניסוח חופשי (למשל "חמישי ב-6" או "השני ב-4") — התאם/י אותו למועד המתאים מהרשימה שהצגת (שים/י לב: "ב-6" פירושו השעה 18:00, "ב-4" זה 16:00 וכו\'), אשר/י בקצרה וקרא/י מיד ל-book_meeting (slot_id, dog_name, owner_name). בקש/י הבהרה רק אם באמת אין מועד מתאים. ' +
@@ -151,6 +158,7 @@
     { name: 'save_summary', description: 'שומר סיכום קליטה מלא לבעל הפנסיון. חובה למלא כל שדה שכבר ידוע לך מהשיחה — אל תשאיר/י ריק פרט שהלקוח כבר מסר.', input_schema: { type: 'object', properties: {
       owner_name: { type: 'string', description: 'שם הבעלים' },
       dog_name: { type: 'string', description: 'שם הכלב' },
+      sex: { type: 'string', description: 'מין: "זכר" או "נקבה"' },
       breed: { type: 'string', description: 'גזע' },
       age: { type: 'string', description: 'גיל' },
       size: { type: 'string', description: 'גודל (קטן/בינוני/גדול)' },
@@ -217,7 +225,7 @@
     const cid = S.customerId();
     const prior = S.getSummary ? (S.getSummary(cid) || {}) : {}; // לקוח חוזר — פרטים משיחה קודמת
     const m = {
-      ownerName: input.owner_name, dogName: input.dog_name, breed: input.breed, breedEn: input.breed_en,
+      ownerName: input.owner_name, dogName: input.dog_name, sex: input.sex, breed: input.breed, breedEn: input.breed_en,
       age: input.age, size: input.size, neutered: input.neutered, vaccinated: input.vaccinated,
       fleaTick: input.flea_tick, allergies: input.allergies, health: input.health, withDogs: input.with_dogs,
       aggression: input.aggression, food: input.food, schedule: input.schedule, meeting: input.meeting,

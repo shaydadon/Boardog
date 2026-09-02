@@ -37,7 +37,11 @@
     if (!S || !S.inboxSince) return;
     const msgs = S.inboxSince(lastInboxTs);
     if (!msgs.length) return;
-    msgs.forEach(m => addMsg(m.text, 'bot'));
+    msgs.forEach(m => {
+      const rep = (window.BoarDogReport && window.BoarDogReport.decodeReportMessage) ? window.BoarDogReport.decodeReportMessage(m.text) : null;
+      if (rep) { if (rep.text) addMsg(rep.text, 'bot'); renderReportCard(rep.summary || {}, true); }
+      else addMsg(m.text, 'bot');
+    });
     lastInboxTs = msgs[msgs.length - 1].ts;
     persist();
     scroll();
@@ -142,13 +146,21 @@
     if (bot) bot.input(text);
   }
 
+  // מרנדר כרטיס דוח בצ'אט (עם שמירה בטרנסקריפט כדי שיישאר אחרי טעינה מחדש)
+  function renderReportCard(summary, record, opts) {
+    const card = (window.BoarDogReport && window.BoarDogReport.render)
+      ? window.BoarDogReport.render(summary, opts || { note: false })
+      : (function () { const d = document.createElement('div'); d.className = 'summary-card'; d.textContent = '📋 דוח'; return d; })();
+    chat.appendChild(card); scroll();
+    if (record && !restoring) transcript.push({ who: 'report', summary: summary });
+    return card;
+  }
+
   function renderSummary(summary) {
     // שמירה מתמשכת (רשת ביטחון — הבוט כבר שומר) לצפייה חוזרת מהיומן וללקוח חוזר
     try { const St = window.BoarDogStore; if (summary && summary.answers && St && St.saveSummary) St.saveSummary(Object.assign({ customerId: St.customerId() }, summary.answers)); } catch (e) {}
-    const card = (window.BoarDogReport && window.BoarDogReport.render)
-      ? window.BoarDogReport.render(summary)
-      : (function () { const d = document.createElement('div'); d.className = 'summary-card'; d.textContent = '📋 סיכום נשמר'; return d; })();
-    chat.appendChild(card); scroll();
+    const a = (summary && summary.answers) ? summary.answers : (summary || {});
+    renderReportCard(a, true, { note: true });
     clearQuick();
     const again = document.createElement('button');
     again.className = 'quick-btn'; again.textContent = '🔄 התחל שיחה חדשה';
@@ -192,7 +204,7 @@
     setBadge(!!cfg);
     // מרנדרים מחדש את ההודעות הקודמות
     restoring = true;
-    transcript.forEach(m => addMsg(m.text, m.who));
+    transcript.forEach(m => { if (m.who === 'report') renderReportCard(m.summary, false); else addMsg(m.text, m.who); });
     restoring = false;
     // מקימים את הבוט עם המצב השמור (בלי לפתוח שיחה חדשה)
     if (cfg) { io.cfg = cfg; bot = window.BoarDogBot.AiBot(io, session.bot); }

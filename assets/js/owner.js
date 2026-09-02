@@ -166,6 +166,19 @@
   function notifyCancel(rec, text) {
     notifyCustomer(rec, `שלום 🐾 עדכון מ${KENNEL_NAME}: ${text}. לכל שאלה אנחנו כאן.`);
   }
+  // הודעת תודה + דוח קליטה מלא ללקוח (כרטיס אינטראקטיבי בצ'אט; בוואטסאפ — טקסט בלבד)
+  function notifyReport(rec, summary, text) {
+    const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const payload = (window.BoarDogReport && window.BoarDogReport.encodeReportMessage)
+      ? window.BoarDogReport.encodeReportMessage(text, summary) : text;
+    try { S.pushCustomerMsg(payload, id); } catch (e) {}
+    const cid = rec && rec.customerId;
+    if (cid && window.BoarDogCloud && window.BoarDogCloud.sendCustomerMessage) window.BoarDogCloud.sendCustomerMessage(cid, id, payload);
+    if (rec && rec.phone) { // מוצר אמיתי — וואטסאפ (טקסט בלבד)
+      const url = notifyUrl();
+      if (url) fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone: rec.phone, text: text }) }).catch(() => {});
+    }
+  }
 
   function refreshDay(date) { renderCalendar(); showDay(date, S.meetingsOn(date), S.boardingsOn(date)); }
 
@@ -202,8 +215,16 @@
       const start = f <= t ? f : t, end = f <= t ? t : f;
       const rec = S.addBoarding({ dogName: meeting.dogName, ownerName: meeting.ownerName, start, end, meetingId: meeting.id, phone: meeting.phone, customerId: meeting.customerId });
       if (rec && rec.id) seen.board.add(rec.id); // מונע התראה כפולה על פעולה שהבעלים עצמו ביצע
-      notifyCustomer(meeting, `שלום ${meeting.ownerName || ''}! 🎉 התאריכים שלך ב${KENNEL_NAME} אושרו ושוריינו: ${start} → ${end}. מחכים ל${meeting.dogName || 'כלב'} 🐶`);
-      toast('התאריכים שוריינו — נשלחה הודעה ללקוח ✓');
+      // עדכון הדוח עם תאריכי השהייה המאושרים, ושליחת תודה + דוח מלא ללקוח
+      const prev = (meeting.customerId && S.getSummary) ? (S.getSummary(meeting.customerId) || {}) : {};
+      const full = Object.assign({}, prev, {
+        customerId: meeting.customerId, ownerName: meeting.ownerName || prev.ownerName,
+        dogName: meeting.dogName || prev.dogName, boardingStart: start, boardingEnd: end,
+        meeting: prev.meeting || (meeting.date ? meeting.date + (meeting.time ? ' ' + meeting.time : '') : '')
+      });
+      if (S.saveSummary) { try { S.saveSummary(full); } catch (e) {} }
+      notifyReport(meeting, full, `תודה ${meeting.ownerName || ''}! 🎉 השהייה של ${meeting.dogName || 'הכלב'} ב${KENNEL_NAME} אושרה ושוריינה: ${start} → ${end}. הנה סיכום הפרטים שקלטנו 🐾`);
+      toast('התאריכים שוריינו — נשלח דוח מלא ללקוח ✓');
       renderCalendar();
       showDay(date, S.meetingsOn(date), S.boardingsOn(date));
     });

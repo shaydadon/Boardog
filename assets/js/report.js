@@ -43,8 +43,9 @@
   }
 
   function rows(a) {
+    const neutLabel = /נקבה/.test(a.sex || '') ? 'מעוקרת' : (/זכר/.test(a.sex || '') ? 'מסורס' : 'מעוקר/מסורס');
     return [
-      ['גיל', a.age], ['גודל', a.size], ['מעוקר/מסורס', a.neutered],
+      ['מין', a.sex], ['גיל', a.age], ['גודל', a.size], [neutLabel, a.neutered],
       ['חיסונים', a.vaccinated], ['פרעושים/קרציות', a.fleaTick],
       ['בריאות', a.health], ['עם כלבים', a.withDogs], ['תוקפנות בעבר', a.aggression],
       ['אוכל', a.food], ['לו״ז', a.schedule],
@@ -107,5 +108,15 @@
     return ov;
   }
 
-  global.BoarDogReport = { render, openModal, fetchBreedImage };
+  /* קידוד/פענוח הודעת "דוח" בין הבעלים ללקוח (עוברת בערוץ ההודעות הרגיל) */
+  const MSG_PREFIX = '⁣REPORT⁣';
+  function encodeReportMessage(text, summary) {
+    return MSG_PREFIX + JSON.stringify({ text: text || '', summary: summary || {} });
+  }
+  function decodeReportMessage(raw) {
+    if (typeof raw !== 'string' || raw.indexOf(MSG_PREFIX) !== 0) return null;
+    try { return JSON.parse(raw.slice(MSG_PREFIX.length)); } catch (e) { return null; }
+  }
+
+  global.BoarDogReport = { render, openModal, fetchBreedImage, encodeReportMessage, decodeReportMessage };
 })(window);

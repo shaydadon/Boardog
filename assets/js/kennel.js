@@ -47,6 +47,7 @@
   const INTAKE = [
     { key: 'ownerName', q: 'נעים מאוד! 🐾 קודם כול — איך קוראים לך?', type: 'text' },
     { key: 'dogName', q: 'ואיך קוראים לכלב/ה שלך?', type: 'text' },
+    { key: 'sex', q: 'זכר או נקבה?', type: 'choice', choices: ['זכר', 'נקבה'] },
     { key: 'breed', q: 'איזה גזע {dogName}?', type: 'text' },
     { key: 'age', q: 'בן/בת כמה {dogName}? (אפשר בשנים)', type: 'text' },
     { key: 'size', q: 'מה הגודל בערך?', type: 'choice', choices: ['קטן', 'בינוני', 'גדול'] },
