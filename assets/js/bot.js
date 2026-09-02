@@ -195,12 +195,12 @@
       const payload = { system: dynamicSystem(), tools: TOOLS, messages };
       return cfg.proxyUrl ? callProxy(cfg.proxyUrl, payload) : callClaude(cfg.key, payload);
     }
-    // ניסיונות חוזרים לשגיאות זמניות (עומס/רשת) לפני ויתור
+    // ניסיונות חוזרים לשגיאות זמניות (עומס 529 / מגבלת קצב 429 / רשת) לפני ויתור
     async function callWithRetry() {
       let lastErr;
-      for (let a = 0; a < 3; a++) {
+      for (let a = 0; a < 4; a++) {
         try { return await call(); }
-        catch (e) { lastErr = e; if (a < 2) await new Promise(r => setTimeout(r, 700 * (a + 1))); }
+        catch (e) { lastErr = e; if (a < 3) await new Promise(r => setTimeout(r, 800 * Math.pow(2, a))); }
       }
       throw lastErr;
     }
@@ -214,6 +214,7 @@
           res = await callWithRetry();
         } catch (e) {
           io.typing(false);
+          try { console.warn('[BoarDog] AI call failed:', e && e.message); } catch (_) {}
           // שומרים את השיחה: חוזרים למצב תקין אחרון וחוזרים על השאלה הקודמת (בלי להתחיל מחדש)
           if (typeof anchor === 'number') messages.length = anchor;
           io.bot({ text: lastBotText
@@ -257,7 +258,7 @@
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-opus-5', max_tokens: 1024, system: payload.system, tools: payload.tools, messages: payload.messages })
+      body: JSON.stringify({ model: 'claude-opus-5', max_tokens: 2048, output_config: { effort: 'low' }, system: payload.system, tools: payload.tools, messages: payload.messages })
     });
     if (!res.ok) throw new Error('claude ' + res.status);
     return res.json();

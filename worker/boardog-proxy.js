@@ -46,7 +46,8 @@ export default {
       },
       body: JSON.stringify({
         model: env.MODEL || 'claude-opus-5',
-        max_tokens: 1024,
+        max_tokens: 2048,
+        output_config: { effort: 'low' }, // צ'אט קליטה — חשיבה רדודה, מהיר וזול, פחות עומס/מגבלת-קצב
         system: body.system,
         tools: body.tools,
         messages: body.messages
