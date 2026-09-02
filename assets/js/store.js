@@ -8,7 +8,7 @@
 (function (global) {
   'use strict';
 
-  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile', inbox: 'boardog.inbox' };
+  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile', inbox: 'boardog.inbox', sum: 'boardog.summaries' };
   const load = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
@@ -123,6 +123,29 @@
     // פגישות היכרות שעדיין ממתינות לשריון תאריכים
     meetingsAwaitingDates() {
       return Store.meetings().filter(m => !Store.meetingFulfilled(m.id));
+    },
+
+    // ---- דוחות קליטה שמורים (לפי מזהה לקוח) — לצפייה חוזרת מהיומן וללקוח חוזר ----
+    summaries: () => load(K.sum, []),
+    getSummary(customerId) {
+      if (!customerId) return null;
+      return Store.summaries().find(s => s.customerId === customerId) || null;
+    },
+    summaryForOwner(ownerName) {
+      const n = norm(ownerName); if (!n) return null;
+      return Store.summaries().filter(s => norm(s.ownerName) === n).slice(-1)[0] || null;
+    },
+    // שמירה/מיזוג דוח קליטה. שומר על פרטים קודמים אם לא נמסרו מחדש (לקוח חוזר).
+    saveSummary(data) {
+      if (!data) return null;
+      const cid = data.customerId || Store.customerId();
+      const list = Store.summaries();
+      const prev = list.find(s => s.customerId === cid) || {};
+      const clean = {}; Object.keys(data).forEach(k => { if (data[k] != null && data[k] !== '') clean[k] = data[k]; });
+      const rec = Object.assign({ id: cid }, prev, clean, { customerId: cid, updatedAt: Date.now() });
+      const next = list.filter(s => s.customerId !== cid); next.push(rec);
+      save(K.sum, next);
+      return rec;
     },
 
     // מזהה לקוח יציב (נוצר פעם אחת) — מצמיד הודעות מהבעלים ללקוח הנכון בין מכשירים

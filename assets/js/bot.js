@@ -87,7 +87,11 @@
       io.done(summary());
     }
 
-    function summary() { return { kennel: K.name, answers: Object.assign({}, answers) }; }
+    function summary() {
+      const ans = Object.assign({ customerId: S.customerId() }, answers);
+      try { if (S.saveSummary) S.saveSummary(ans); } catch (e) {} // שמירה מתמשכת + סנכרון
+      return { kennel: K.name, answers: ans };
+    }
 
     function tryAnswerQuestion(text) {
       if (!K.isQuestion(text)) return false;
@@ -126,7 +130,7 @@
     'תחילה שאל/י לשם הפונה, וקרא/י ל-lookup_customer עם owner_name כדי לבדוק אם זה לקוח קיים.\n' +
     '• אם returning=true (לקוח קיים): דלג/י על התשאול לגמרי, ברך/י אותו בשמו, ובקש/י ישירות את תאריכי השהייה. ' +
     'קרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
-    '• אם לקוח חדש: אסוף/אספי שם כלב, גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, בריאות/תרופות, ' +
+    '• אם לקוח חדש: אסוף/אספי שם כלב, גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, אלרגיות, בריאות/תרופות, ' +
     'התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז. ואז קרא/י ל-get_available_slots והצג/י 3–5 מועדים; כשהלקוח בוחר — book_meeting (slot_id, dog_name, owner_name). ' +
     'לאחר קביעת פגישת ההיכרות ללקוח חדש: שאל/י לאילו תאריכים הוא צריך את השהייה, וקרא/י ל-check_dates (start_date, end_date, owner_name) בפורמט YYYY-MM-DD כדי לבדוק ביומן אם פנוי וכמה כלבים כבר בטווח — ומסור/י לו את התוצאה. ' +
     '*אל תשריין/י תאריכי שהייה ואל תקרא/י ל-book_boarding ללקוח חדש.* ' +
@@ -148,7 +152,9 @@
       neutered: { type: 'string', description: 'מעוקר/מסורס' },
       vaccinated: { type: 'string', description: 'חיסונים בתוקף' },
       flea_tick: { type: 'string', description: 'טיפול פרעושים/קרציות' },
+      allergies: { type: 'string', description: 'אלרגיות (מזון/תרופות/סביבה). אם אין — "אין"' },
       health: { type: 'string', description: 'מצב בריאות/תרופות' },
+      breed_en: { type: 'string', description: 'שם הגזע באנגלית לחיפוש תמונה, למשל: labrador, poodle, maltese, husky' },
       with_dogs: { type: 'string', description: 'התאמה לכלבים אחרים' },
       aggression: { type: 'string', description: 'עבר תוקפנות' },
       food: { type: 'string', description: 'סוג אוכל' },
@@ -164,7 +170,12 @@
   async function runTool(name, input) {
     if (name === 'lookup_customer') {
       const ret = S.isReturning(input.owner_name);
-      return { returning: ret, last_dog: ret ? S.lastDogFor(input.owner_name) : '' };
+      const prev = S.summaryForOwner ? S.summaryForOwner(input.owner_name) : null;
+      return {
+        returning: ret || !!prev,
+        last_dog: (prev && prev.dogName) || (ret ? S.lastDogFor(input.owner_name) : ''),
+        known: prev ? { dog_name: prev.dogName, breed: prev.breed, age: prev.age, size: prev.size, food: prev.food, allergies: prev.allergies } : null
+      };
     }
     if (name === 'get_available_slots') {
       if (window.BoarDogCloud && window.BoarDogCloud.refresh) { try { await window.BoarDogCloud.refresh(); } catch (e) {} }
@@ -198,15 +209,16 @@
   // פרטים מנתוני היומן שהבוט שריין בפועל (פגישה/שהייה) כדי שהדוח לא יהיה חסר
   function buildSummary(input) {
     input = input || {};
+    const cid = S.customerId();
+    const prior = S.getSummary ? (S.getSummary(cid) || {}) : {}; // לקוח חוזר — פרטים משיחה קודמת
     const m = {
-      ownerName: input.owner_name, dogName: input.dog_name, breed: input.breed, age: input.age,
-      size: input.size, neutered: input.neutered, vaccinated: input.vaccinated, fleaTick: input.flea_tick,
-      health: input.health, withDogs: input.with_dogs, aggression: input.aggression, food: input.food,
-      schedule: input.schedule, meeting: input.meeting,
+      ownerName: input.owner_name, dogName: input.dog_name, breed: input.breed, breedEn: input.breed_en,
+      age: input.age, size: input.size, neutered: input.neutered, vaccinated: input.vaccinated,
+      fleaTick: input.flea_tick, allergies: input.allergies, health: input.health, withDogs: input.with_dogs,
+      aggression: input.aggression, food: input.food, schedule: input.schedule, meeting: input.meeting,
       boardingStart: input.boarding_start, boardingEnd: input.boarding_end,
       requestedStart: input.requested_start, requestedEnd: input.requested_end
     };
-    const cid = S.customerId();
     const mtg = S.meetings().filter(x => x.customerId === cid).slice(-1)[0];
     if (mtg) {
       m.ownerName = m.ownerName || mtg.ownerName;
@@ -224,7 +236,11 @@
       m.ownerName = m.ownerName || brd.ownerName;
     }
     Object.keys(m).forEach(k => { if (m[k] == null || m[k] === '') delete m[k]; });
-    return m;
+    // מיזוג עם פרטים קודמים (לקוח חוזר) — מה שנמסר עכשיו גובר
+    const out = Object.assign({}, prior, m, { customerId: cid });
+    delete out.id; delete out.updatedAt;
+    try { if (S.saveSummary) S.saveSummary(out); } catch (e) {} // שמירה מתמשכת + סנכרון
+    return out;
   }
 
   function AiBot(io, saved) {

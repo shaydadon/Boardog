@@ -95,8 +95,9 @@
       meets.map(m => {
         const done = S.meetingFulfilled(m.id);
         const req = m.requestedStart ? `<div class="dd-req">🗓️ מבוקש ע״י הלקוח: ${esc(m.requestedStart)} → ${esc(m.requestedEnd)}</div>` : '';
+        const rBtn = (m.customerId && S.getSummary && S.getSummary(m.customerId)) ? `<button class="report-btn" data-report="${esc(m.customerId)}">📋 דוח קליטה</button>` : '';
         return `<div class="dd-row meet">📋 פגישת היכרות ${m.time} — ${esc(m.dogName)} (${esc(m.ownerName)}) ` +
-          `<button class="del-btn" title="מחק פגישה" data-del-meet="${esc(m.id)}">🗑</button>` +
+          `<button class="del-btn" title="מחק פגישה" data-del-meet="${esc(m.id)}">🗑</button>` + rBtn +
           (done ? `<span class="dd-tag ok">✓ תאריכים שוריינו</span>`
                 : `<span class="dd-tag wait">⏳ ממתין לתאריכים</span>` + req +
                   `<div class="dd-reserve"><button class="mini-btn" data-mid="${esc(m.id)}">＋ שריין תאריכי שהייה</button></div>`) +
@@ -104,7 +105,8 @@
       }).join('') +
       boards.map(b => {
         const multi = b.start !== b.end;
-        return `<div class="dd-row board">🏠 שהייה — ${esc(b.dogName)} (${esc(b.ownerName)}) · ${b.start}→${b.end}` +
+        const rBtn = (b.customerId && S.getSummary && S.getSummary(b.customerId)) ? `<button class="report-btn" data-report="${esc(b.customerId)}">📋 דוח קליטה</button>` : '';
+        return `<div class="dd-row board">🏠 שהייה — ${esc(b.dogName)} (${esc(b.ownerName)}) · ${b.start}→${b.end}` + rBtn +
           `<div class="dd-del">` +
           (multi ? `<button class="del-btn" data-del-day="${esc(b.id)}">🗑 יום זה (${S.key(date)})</button>` : '') +
           `<button class="del-btn" data-del-board="${esc(b.id)}">🗑 כל השהייה</button>` +
@@ -112,6 +114,12 @@
       }).join('');
     box.querySelectorAll('.mini-btn[data-mid]').forEach(btn =>
       btn.addEventListener('click', () => openReserve(btn, meets.find(m => m.id === btn.dataset.mid), date)));
+    box.querySelectorAll('[data-report]').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const sum = S.getSummary(btn.dataset.report);
+        if (sum && window.BoarDogReport) window.BoarDogReport.openModal(sum);
+        else toast('אין עדיין דוח קליטה ללקוח זה');
+      }));
     box.querySelectorAll('[data-del-meet]').forEach(btn =>
       btn.addEventListener('click', () => {
         if (!confirm('למחוק את פגישת ההיכרות?')) return;

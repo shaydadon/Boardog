@@ -14,7 +14,7 @@
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnem5ld3B3YmNuaGt6aG1wY2trIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxODg2MTQsImV4cCI6MjEwMzc2NDYxNH0.NXvgGh9BhLwlzyhKo1SZWmaVsyqutd1-PUpW1hR8oKI';
   const KENNEL_ID = 'jerry';
 
-  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile' };
+  const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile', sum: 'boardog.summaries' };
   const S = window.BoarDogStore;
   if (!S) return;
 
@@ -42,6 +42,9 @@
 
   const _updateBoarding = S.updateBoarding.bind(S);
   S.updateBoarding = function (rec) { const out = _updateBoarding(rec); const full = S.boardings().find(b => b.id === (rec && rec.id)); if (full) pushInsert('boardings', full); return out; };
+
+  const _saveSummary = S.saveSummary.bind(S);
+  S.saveSummary = function (data) { const rec = _saveSummary(data); if (rec) pushInsert('summaries', rec); return rec; };
 
   const _removeMeeting = S.removeMeeting.bind(S);
   S.removeMeeting = function (id) { _removeMeeting(id); pushDelete('meetings', id); };
@@ -71,16 +74,18 @@
   async function pull() {
     if (!sb) return;
     try {
-      const [a, m, b, p] = await Promise.all([
+      const [a, m, b, p, s] = await Promise.all([
         sb.from('availability').select('config').eq('id', KENNEL_ID).maybeSingle(),
         sb.from('meetings').select('data').eq('kennel', KENNEL_ID),
         sb.from('boardings').select('data').eq('kennel', KENNEL_ID),
-        sb.from('kennel_profile').select('data').eq('id', KENNEL_ID).maybeSingle()
+        sb.from('kennel_profile').select('data').eq('id', KENNEL_ID).maybeSingle(),
+        sb.from('summaries').select('data').eq('kennel', KENNEL_ID)
       ]);
       if (a.data && a.data.config) setLocal(K.avail, a.data.config);
       if (m.data) setLocal(K.meet, m.data.map(r => r.data).filter(Boolean));
       if (b.data) setLocal(K.board, b.data.map(r => r.data).filter(Boolean));
       if (p.data && p.data.data) setLocal(K.prof, p.data.data);
+      if (s.data) setLocal(K.sum, s.data.map(r => r.data).filter(Boolean));
       emit();
     } catch (e) {}
   }
@@ -95,6 +100,8 @@
       if (m.data && m.data.length === 0) { for (const rec of getLocal(K.meet, [])) await pushInsert('meetings', rec); }
       const b = await sb.from('boardings').select('id').eq('kennel', KENNEL_ID).limit(1);
       if (b.data && b.data.length === 0) { for (const rec of getLocal(K.board, [])) await pushInsert('boardings', rec); }
+      const s = await sb.from('summaries').select('id').eq('kennel', KENNEL_ID).limit(1);
+      if (s.data && s.data.length === 0) { for (const rec of getLocal(K.sum, [])) await pushInsert('summaries', rec); }
     } catch (e) {}
   }
 
@@ -113,6 +120,7 @@
         .on('postgres_changes', { event: '*', schema: 'public', table: 'boardings' }, pull)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'availability' }, pull)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'kennel_profile' }, pull)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'summaries' }, pull)
         .subscribe();
     } catch (e) {}
     // הודעות מהבעלים ללקוח הזה (לפי מזהה הלקוח) — מגיעות בזמן אמת גם בין מכשירים

@@ -143,22 +143,11 @@
   }
 
   function renderSummary(summary) {
-    const a = summary.answers || {};
-    const rows = [
-      ['בעלים', a.ownerName], ['כלב', a.dogName], ['גזע', a.breed], ['גיל', a.age],
-      ['גודל', a.size], ['מעוקר/מסורס', a.neutered], ['חיסונים', a.vaccinated],
-      ['פרעושים/קרציות', a.fleaTick], ['בריאות', a.health], ['עם כלבים', a.withDogs],
-      ['תוקפנות בעבר', a.aggression], ['אוכל', a.food],
-      ['תאריכי שהייה', a.boardingStart ? (a.boardingStart + ' – ' + a.boardingEnd) : null],
-      ['תאריכים מבוקשים (לאישור בפגישה)', a.requestedStart ? (a.requestedStart + ' – ' + a.requestedEnd) : null],
-      ['פגישת היכרות', a.meeting]
-    ].filter(r => r[1]);
-    const card = document.createElement('div');
-    card.className = 'summary-card';
-    card.innerHTML =
-      `<div class="sc-head">📋 סיכום קליטה ל${esc(K.ownerName)} — ${esc(K.name)}</div>` +
-      rows.map(r => `<div class="sc-row"><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('') +
-      `<div class="sc-note">✅ זה מה שבעל הפנסיון מקבל אוטומטית — בלי שיחת טלפון אחת.</div>`;
+    // שמירה מתמשכת (רשת ביטחון — הבוט כבר שומר) לצפייה חוזרת מהיומן וללקוח חוזר
+    try { const St = window.BoarDogStore; if (summary && summary.answers && St && St.saveSummary) St.saveSummary(Object.assign({ customerId: St.customerId() }, summary.answers)); } catch (e) {}
+    const card = (window.BoarDogReport && window.BoarDogReport.render)
+      ? window.BoarDogReport.render(summary)
+      : (function () { const d = document.createElement('div'); d.className = 'summary-card'; d.textContent = '📋 סיכום נשמר'; return d; })();
     chat.appendChild(card); scroll();
     clearQuick();
     const again = document.createElement('button');
