@@ -7,6 +7,9 @@
 (function () {
   'use strict';
 
+  // Client ID מוטמע (ברירת מחדל למוצר) — לא סוד, גלוי ממילא בדף. כשמוגדר,
+  // הבעלים לא רואה שדה כלל, רק כפתור סנכרון. אפשר לדרוס דרך localStorage.
+  const DEFAULT_CLIENT_ID = '';
   const CID_KEY = 'boardog.gcalClient';
   const MAP_KEY = 'boardog.gcalMap';       // { 'm:<id>'|'b:<id>': eventId }
   const SCOPE = 'https://www.googleapis.com/auth/calendar.events';
@@ -14,7 +17,7 @@
 
   let token = null, tokenExp = 0, tokenClient = null;
 
-  const clientId = () => { try { return localStorage.getItem(CID_KEY) || ''; } catch (e) { return ''; } };
+  const clientId = () => { try { return localStorage.getItem(CID_KEY) || DEFAULT_CLIENT_ID; } catch (e) { return DEFAULT_CLIENT_ID; } };
   const setClientId = (v) => { try { localStorage.setItem(CID_KEY, v || ''); } catch (e) {} };
   const loadMap = () => { try { return JSON.parse(localStorage.getItem(MAP_KEY) || '{}'); } catch (e) { return {}; } };
   const saveMap = (m) => { try { localStorage.setItem(MAP_KEY, JSON.stringify(m)); } catch (e) {} };
