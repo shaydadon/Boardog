@@ -53,6 +53,7 @@
       if (b.dataset.otab === 'cal') renderCalendar();
       if (b.dataset.otab === 'profile') loadProfile();
       if (b.dataset.otab === 'revenue') renderRevenue();
+      if (b.dataset.otab === 'ask') renderAiUsage();
     }));
   }
 
@@ -460,6 +461,23 @@
 
   /* ---------- שאילתת AI חופשית ---------- */
   function aiCfg() { try { return JSON.parse(localStorage.getItem('boardog.ai') || '{}'); } catch (e) { return {}; } }
+
+  // מחוון שימוש AI חודשי (רק כשעובדים דרך proxy עם אכיפת מכסה)
+  async function renderAiUsage() {
+    const box = $('#ai-usage'); if (!box) return;
+    const cfg = aiCfg();
+    if (!cfg.proxyUrl) { box.hidden = true; return; }
+    const kennel = (window.BoarDogCloud && window.BoarDogCloud.kennelId) || 'default';
+    try {
+      const r = await fetch(cfg.proxyUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'usage', kennel }) });
+      const d = await r.json();
+      if (!d || !d.enforced || typeof d.limit !== 'number') { box.hidden = true; return; }
+      const left = Math.max(0, d.limit - (d.used || 0));
+      box.textContent = `🤖 נותרו ${left} מתוך ${d.limit} הודעות AI החודש`;
+      box.classList.toggle('low', left <= Math.max(5, Math.round(d.limit * 0.1)));
+      box.hidden = false;
+    } catch (e) { box.hidden = true; }
+  }
   async function askAi() {
     const q = $('#ask-text').value.trim();
     const out = $('#ask-ai-result');

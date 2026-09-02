@@ -70,6 +70,11 @@ export default {
     const enforce = env.SUPABASE_SERVICE_ROLE && env.SUPABASE_URL;
     const month = new Date().toISOString().slice(0, 7); // YYYY-MM
     const limit = parseInt(env.AI_MONTHLY_LIMIT || '2000', 10);
+    // בקשת מצב שימוש (לדשבורד הבעלים) — קריאה בלבד, בלי קריאה ל-Claude
+    if (body.action === 'usage') {
+      const used = enforce ? await getMonthlyUsage(env, kennel, month) : null;
+      return json({ enforced: !!enforce, used, limit: enforce ? limit : null }, 200, origin);
+    }
     if (enforce) {
       const used = await getMonthlyUsage(env, kennel, month);
       if (used >= limit) return json({ error: 'quota_exceeded', used, limit }, 429, origin);
