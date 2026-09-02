@@ -191,15 +191,32 @@
       extra += `\n\nאם הלקוח שואל על מחיר או הצעת מחיר — חשב/י לפי מדיניות המחירים שבתיאור הפנסיון למעלה (כולל מדרגות/עונות אם צוינו) ומספר הימים המבוקשים.`;
       return SYSTEM + extra;
     }
-    // מנקה בלוקי "חשיבה" (thinking) מההיסטוריה — נשארו מהרצות Opus קודמות ועלולים להיכשל
+    // תיקון היסטוריית ההודעות לפני שליחה ל-Claude, כדי למנוע 400:
+    //  1) הסרת בלוקי "חשיבה" (thinking) שנשארו מהרצות Opus קודמות.
+    //  2) הסרת בלוקי tool_use "יתומים" (בלי tool_result תואם — קורה כשתשובה
+    //     נחתכה ב-max_tokens באמצע קריאת כלי) ובלוקי tool_result יתומים.
+    //  3) השמטת הודעות שנשארו ללא תוכן.
     function sanitize(msgs) {
-      return msgs.map(m => {
-        if (m.role === 'assistant' && Array.isArray(m.content)) {
-          const c = m.content.filter(b => b.type !== 'thinking' && b.type !== 'redacted_thinking');
-          return { role: 'assistant', content: c.length ? c : '' };
-        }
-        return m;
+      // אילו tool_use_id באמת קיבלו tool_result, ולהפך
+      const resultIds = new Set(), useIds = new Set();
+      msgs.forEach(m => {
+        if (Array.isArray(m.content)) m.content.forEach(b => {
+          if (b && b.type === 'tool_result' && b.tool_use_id) resultIds.add(b.tool_use_id);
+          if (b && b.type === 'tool_use' && b.id) useIds.add(b.id);
+        });
       });
+      const out = [];
+      msgs.forEach(m => {
+        if (!Array.isArray(m.content)) { if (m.content) out.push(m); return; }
+        const c = m.content.filter(b => {
+          if (!b || b.type === 'thinking' || b.type === 'redacted_thinking') return false;
+          if (b.type === 'tool_use') return resultIds.has(b.id);        // רק אם יש תוצאה תואמת
+          if (b.type === 'tool_result') return useIds.has(b.tool_use_id); // רק אם יש קריאה תואמת
+          return true;
+        });
+        if (c.length) out.push({ role: m.role, content: c });
+      });
+      return out;
     }
     async function call() {
       const payload = { system: dynamicSystem(), tools: TOOLS, messages: sanitize(messages) };
@@ -277,7 +294,7 @@
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1024, system: payload.system, tools: payload.tools, messages: payload.messages })
+      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 2048, system: payload.system, tools: payload.tools, messages: payload.messages })
     });
     if (!res.ok) throw await httpErr('claude', res);
     return res.json();

@@ -46,7 +46,7 @@ export default {
       },
       body: JSON.stringify({
         model: env.MODEL || 'claude-haiku-4-5', // מהיר, יציב וזול לצ'אט קליטה (בלי thinking/effort)
-        max_tokens: 1024,
+        max_tokens: 2048,
         system: body.system,
         tools: body.tools,
         messages: body.messages
