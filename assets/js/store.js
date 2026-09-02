@@ -104,17 +104,24 @@
     },
 
     // ---- לקוחות חוזרים + מעקב תאריכים אחרי פגישת היכרות ----
-    // לקוח חוזר = יש לו כבר שהייה בעבר (לפי שם הבעלים)
+    // לקוח חוזר = כבר יש לנו היכרות מוקדמת איתו לפי שם הבעלים —
+    // שהייה קודמת, פגישת היכרות שנקבעה, או דוח קליטה שמור. די באחד מהם
+    // כדי שהבוט "יזכור" אותו בצ'אט חדש ולא יתשאל שוב מאפס (למשל לקוח שקבע
+    // פגישת היכרות אך טרם שוריינה לו שהייה בפועל).
     isReturning(ownerName) {
       const n = norm(ownerName);
       if (!n) return false;
-      return Store.boardings().some(b => norm(b.ownerName) === n);
+      return Store.boardings().some(b => norm(b.ownerName) === n)
+          || Store.meetings().some(m => norm(m.ownerName) === n)
+          || Store.summaries().some(s => norm(s.ownerName) === n);
     },
-    // שם הכלב מהשהייה האחרונה של אותו בעלים (למילוי מראש)
+    // שם הכלב מההיכרות האחרונה של אותו בעלים (למילוי מראש) —
+    // מעדיפים שהייה, אחר כך פגישה, ולבסוף דוח קליטה שמור
     lastDogFor(ownerName) {
       const n = norm(ownerName);
-      const hit = Store.boardings().filter(b => norm(b.ownerName) === n).slice(-1)[0];
-      return hit ? hit.dogName : '';
+      const pick = (list) => list.filter(x => norm(x.ownerName) === n).slice(-1)[0];
+      const hit = pick(Store.boardings()) || pick(Store.meetings()) || pick(Store.summaries());
+      return (hit && hit.dogName) ? hit.dogName : '';
     },
     // האם לפגישת היכרות כבר שוריינו תאריכי שהייה
     meetingFulfilled(meetingId) {
