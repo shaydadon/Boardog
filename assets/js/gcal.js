@@ -9,7 +9,7 @@
 
   // Client ID מוטמע (ברירת מחדל למוצר) — לא סוד, גלוי ממילא בדף. כשמוגדר,
   // הבעלים לא רואה שדה כלל, רק כפתור סנכרון. אפשר לדרוס דרך localStorage.
-  const DEFAULT_CLIENT_ID = '';
+  const DEFAULT_CLIENT_ID = '372588686007-8qmm1i1jgtfipfmbcqrsh1g2p01tp6gb.apps.googleusercontent.com';
   const CID_KEY = 'boardog.gcalClient';
   const MAP_KEY = 'boardog.gcalMap';       // { 'm:<id>'|'b:<id>': eventId }
   const SCOPE = 'https://www.googleapis.com/auth/calendar.events';
@@ -102,5 +102,6 @@
     return { added, removed };
   }
 
-  window.BoarDogGCal = { clientId, setClientId, sync, getToken, configured: () => !!clientId() };
+  const hasOverride = () => { try { return !!localStorage.getItem(CID_KEY); } catch (e) { return false; } };
+  window.BoarDogGCal = { clientId, setClientId, sync, getToken, configured: () => !!clientId(), hasOverride };
 })();

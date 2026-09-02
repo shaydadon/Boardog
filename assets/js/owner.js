@@ -233,10 +233,11 @@
     return S.meetings().map(m => 'm:' + m.id).concat(S.boardings().map(b => 'b:' + b.id));
   }
   function refreshGCalUI() {
+    const override = window.BoarDogGCal && BoarDogGCal.hasOverride && BoarDogGCal.hasOverride();
     const configured = window.BoarDogGCal && BoarDogGCal.configured();
     const row = $('#bd-gcal-row'), conn = $('#bd-gcal-connected');
-    if (row) row.hidden = !!configured;
-    if (conn) conn.hidden = !configured;
+    if (row) row.hidden = !!configured;   // מוסתר כשיש Client ID (כולל המוטמע)
+    if (conn) conn.hidden = !override;     // "מחובר / שנה" רק אם הוזן מזהה ידני
   }
   function initGCal() {
     const input = $('#bd-gcal-client'), btn = $('#bd-gcal-sync'), change = $('#bd-gcal-change');
