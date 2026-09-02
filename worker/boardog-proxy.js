@@ -45,8 +45,9 @@ export default {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: env.MODEL || 'claude-haiku-4-5', // מהיר, יציב וזול לצ'אט קליטה (בלי thinking/effort)
+        model: env.MODEL || 'claude-sonnet-5', // עברית רהוטה ויציבה לצ'אט קליטה; thinking כבוי (לא צריך חשיבה עמוקה)
         max_tokens: 2048,
+        thinking: { type: 'disabled' },
         system: body.system,
         tools: body.tools,
         messages: body.messages

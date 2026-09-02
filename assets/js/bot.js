@@ -367,7 +367,7 @@
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 2048, system: payload.system, tools: payload.tools, messages: payload.messages })
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 2048, thinking: { type: 'disabled' }, system: payload.system, tools: payload.tools, messages: payload.messages })
     });
     if (!res.ok) throw await httpErr('claude', res);
     return res.json();
