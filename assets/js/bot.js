@@ -161,7 +161,7 @@
     '(4) בלי הרצאות ובלי הומור מוגזם — טבעי, אנושי וקצר. ' +
     'אל תחזור/י על שאלה שכבר נענתה; הסק/י פרטים מהקונטקסט (למשל אם הלקוח כתב "מלטז בן 3" — כבר יש לך גזע וגיל). ' +
     'אם הלקוח מציין שהשיחה נקטעה/קרסה, או שכבר דיברתם — התנצל/י בחום, הודה/י לו, והמשך/י בעדינות מאיפה שאפשר בלי להתחיל מחדש.\n' +
-    'אם הלקוח שואל אם יהיו כלבים אחרים בתקופת השהייה — *אל תנחש/י ואל תדבר/י על התפוסה המרבית*; קרא/י ל-check_dates עם התאריכים המבוקשים והשב/י לפי dogs_in_range האמיתי מהיומן (למשל: "בדקתי ביומן — באותם תאריכים רשומים כרגע 2 כלבים"). אם עדיין אין תאריכים, בקש/י אותם קודם.\n' +
+    'אם הלקוח שואל כמה כלבים יהיו / אם יהיו כלבים אחרים בתקופת השהייה — *חובה לקרוא ל-check_dates בכל פעם מחדש* עם התאריכים המבוקשים, ולמסור את המספר dogs_in_range **בדיוק כפי שחזר** (זהו המספר הכולל של הכלבים במקביל, כולל הכלב של הלקוח אם כבר שוריין). *אסור לנחש, אסור לומר מספר אחר, ואסור לדבר על התפוסה המרבית במקום המספר בפועל.* אם עדיין אין תאריכים — בקש/י אותם קודם. תוכל/י להשתמש ב-answer_he שחוזר מהכלי כבסיס לתשובה.\n' +
     'תחילה שאל/י לשם הפונה, וקרא/י ל-lookup_customer עם owner_name כדי לבדוק אם זה לקוח קיים.\n' +
     '• אם returning=true (לקוח קיים): דלג/י על התשאול לגמרי, ברך/י אותו בשמו, ובקש/י ישירות את תאריכי השהייה. ' +
     'קרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
@@ -239,6 +239,8 @@
       return { ok: true, booked: slot.label };
     }
     if (name === 'check_dates') {
+      // רענון מהשרת קודם — כדי לראות שהיות שהבעלים הוסיף ממכשיר אחר (נתונים עדכניים)
+      if (window.BoarDogCloud && window.BoarDogCloud.refresh) { try { await window.BoarDogCloud.refresh(); } catch (e) {} }
       const rng = futureRange(input.start_date, input.end_date); // הגנת תאריכים
       const r = S.dogsInRange(rng.start, rng.end);
       const cap = S.capacity();
@@ -247,7 +249,12 @@
       const mine = S.meetings().filter(m => String(m.ownerName || '').trim().toLowerCase() === n);
       const last = mine[mine.length - 1];
       if (last) { last.requestedStart = rng.start; last.requestedEnd = rng.end; S.updateMeeting(last); }
-      return { available: r.peak < cap, dogs_in_range: r.peak, capacity: cap, start_date: rng.start, end_date: rng.end };
+      const spots = Math.max(0, cap - r.peak);
+      return {
+        start_date: rng.start, end_date: rng.end,
+        dogs_in_range: r.peak, capacity: cap, spots_left: spots, available: r.peak < cap,
+        answer_he: `בתאריכים ${rng.start}–${rng.end} רשומים ביומן ${r.peak} כלבים במקביל (מתוך תפוסה מרבית ${cap}, נותרו ${spots} מקומות).`
+      };
     }
     if (name === 'book_boarding') {
       const rng = futureRange(input.start_date, input.end_date); // הגנת תאריכים
