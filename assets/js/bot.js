@@ -191,12 +191,30 @@
       const payload = { system: dynamicSystem(), tools: TOOLS, messages };
       return cfg.proxyUrl ? callProxy(cfg.proxyUrl, payload) : callClaude(cfg.key, payload);
     }
-    async function loop() {
+    // ניסיונות חוזרים לשגיאות זמניות (עומס/רשת) לפני ויתור
+    async function callWithRetry() {
+      let lastErr;
+      for (let a = 0; a < 3; a++) {
+        try { return await call(); }
+        catch (e) { lastErr = e; if (a < 2) await new Promise(r => setTimeout(r, 700 * (a + 1))); }
+      }
+      throw lastErr;
+    }
+    // anchor = אורך ההיסטוריה לפני התור הנוכחי — לשחזור נקי אם ה-AI נכשל
+    async function loop(anchor) {
       io.typing(true);
       let guard = 0;
       while (guard++ < 10) {
         let res;
-        try { res = await call(); } catch (e) { io.typing(false); io.bot({ text: '⚠️ שגיאת AI. עוברים למצב מונחה.' }); io.fallback(); return; }
+        try {
+          res = await callWithRetry();
+        } catch (e) {
+          io.typing(false);
+          // שומרים את השיחה: חוזרים למצב תקין אחרון ומבקשים לשלוח שוב (בלי להתחיל מחדש)
+          if (typeof anchor === 'number') messages.length = anchor;
+          io.bot({ text: 'אופס, הייתה לי תקלה רגעית 🙏 אפשר לשלוח שוב את ההודעה האחרונה?' });
+          return;
+        }
         messages.push({ role: 'assistant', content: res.content });
         const texts = res.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
         if (texts) io.bot({ text: texts });
@@ -215,10 +233,10 @@
       if (lastSummary) io.done({ kennel: K.name, answers: lastSummary });
     }
     return {
-      start() { messages.push({ role: 'user', content: 'שלום' }); loop(); },
-      input(text) { messages.push({ role: 'user', content: text }); loop(); },
-      pickSlot(id) { const s = S.findSlot(id); messages.push({ role: 'user', content: 'אני בוחר/ת: ' + (s ? s.label : id) }); loop(); },
-      boarding(start, end) { messages.push({ role: 'user', content: `תאריכי השהייה: מ-${start} עד ${end}` }); loop(); },
+      start() { const a = messages.length; messages.push({ role: 'user', content: 'שלום' }); loop(a); },
+      input(text) { const a = messages.length; messages.push({ role: 'user', content: text }); loop(a); },
+      pickSlot(id) { const a = messages.length; const s = S.findSlot(id); messages.push({ role: 'user', content: 'אני בוחר/ת: ' + (s ? s.label : id) }); loop(a); },
+      boarding(start, end) { const a = messages.length; messages.push({ role: 'user', content: `תאריכי השהייה: מ-${start} עד ${end}` }); loop(a); },
       getState,
       mode: 'ai'
     };
