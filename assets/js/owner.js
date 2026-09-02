@@ -335,6 +335,8 @@
     if ($('#prof-desc')) $('#prof-desc').value = p.description || '';
     if ($('#prof-cap')) $('#prof-cap').value = p.capacity || '';
     if ($('#prof-notify')) $('#prof-notify').value = notifyUrl();
+    const cl = $('#cust-link');
+    if (cl && window.BoarDogCloud && window.BoarDogCloud.customerLink) cl.value = window.BoarDogCloud.customerLink() || '';
   }
   function saveProfile() {
     const cap = parseInt($('#prof-cap').value, 10);
@@ -558,6 +560,13 @@
     $('#ask-ai-go').addEventListener('click', askAi);
     loadProfile();
     $('#prof-save').addEventListener('click', saveProfile);
+    const clc = $('#cust-link-copy');
+    if (clc) clc.addEventListener('click', () => {
+      const el = $('#cust-link'); if (!el || !el.value) return;
+      const done = () => toast('הקישור הועתק ✓');
+      if (navigator.clipboard) navigator.clipboard.writeText(el.value).then(done, () => { el.select(); document.execCommand('copy'); done(); });
+      else { el.select(); document.execCommand('copy'); done(); }
+    });
     $('#prof-ai').addEventListener('click', analyzeProfile);
     $('#prof-notify-save').addEventListener('click', () => {
       try { localStorage.setItem(NOTIFY_KEY, $('#prof-notify').value.trim()); } catch (e) {}

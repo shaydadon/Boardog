@@ -123,6 +123,10 @@ html, body { margin: 0; height: 100%; background: #0b141a; overflow-x: hidden;
 .prof-guide-body ul { padding-inline-start: 18px; margin: 4px 0; }
 .prof-guide-body li { margin-bottom: 5px; }
 .prof-guide-tip { background: #fff7e6; border: 1px solid #f0e0b8; border-radius: 8px; padding: 8px 10px; margin-top: 8px; color: #7a5f1a; font-size: 12.5px; }
+.share-box { margin: 4px 0 14px; padding: 12px 14px; border: 1px solid #d6e6df; border-radius: 12px; background: #f2faf6; }
+.share-label { font-weight: 800; font-size: 13.5px; color: var(--wa-teal); margin-bottom: 8px; }
+.share-row { display: flex; gap: 8px; }
+.share-row input { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid #cfd8dc; border-radius: 9px; font-size: 12.5px; direction: ltr; text-align: left; background: #fff; }
 
 /* כפתורי מענה מהיר */
 .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px; justify-content: flex-end; }

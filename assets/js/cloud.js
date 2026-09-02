@@ -12,7 +12,7 @@
 
   const SUPABASE_URL = 'https://egznewpwbcnhkzhmpckk.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnem5ld3B3YmNuaGt6aG1wY2trIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxODg2MTQsImV4cCI6MjEwMzc2NDYxNH0.NXvgGh9BhLwlzyhKo1SZWmaVsyqutd1-PUpW1hR8oKI';
-  const KENNEL_ID = 'jerry';
+  let KENNEL_ID = null; // מזהה הפנסיון — נקבע לפי חשבון הבעלים המחובר (או ?k= בצד הלקוח)
 
   const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile', sum: 'boardog.summaries' };
   const S = window.BoarDogStore;
@@ -106,7 +106,7 @@
   }
 
   /* ---------- זמן אמת ---------- */
-  const MYID = (S.customerId ? S.customerId() : null);
+  let MYID = (S.customerId ? S.customerId() : null);
   async function sendCustomerMessage(customerId, id, text) {
     if (!sb || !customerId) return;
     try { await sb.from('customer_messages').insert({ id: id, customer_id: customerId, text: text }); } catch (e) {}
@@ -145,10 +145,38 @@
     setInterval(() => { if (!document.hidden) pull(); }, 20000);
   }
 
-  function init() {
-    if (!window.supabase || !window.supabase.createClient) return; // אין רשת/CDN – ממשיכים מקומית
+  /* ---------- קביעת מזהה הפנסיון (multi-tenancy) ---------- */
+  const isOwnerPage = () => !!document.getElementById('owner-app');
+  function ownerKennelId() {
+    try {
+      const u = JSON.parse(localStorage.getItem('boardog.owner') || 'null');
+      return (u && u.sub) ? ('k_' + u.sub) : null;
+    } catch (e) { return null; }
+  }
+  function resolveKennelId() {
+    if (isOwnerPage()) return ownerKennelId(); // צד בעלים: לפי חשבון Google המחובר
+    // צד לקוח: פרמטר בכתובת (?k=) → זיכרון → אותו מכשיר שבו הבעלים מחובר → ברירת מחדל
+    let k = null;
+    try { k = new URLSearchParams(location.search).get('k'); } catch (e) {}
+    if (k) { try { localStorage.setItem('boardog.custKennel', k); } catch (e) {} return k; }
+    try { k = localStorage.getItem('boardog.custKennel'); } catch (e) {}
+    return k || ownerKennelId() || 'jerry';
+  }
+
+  function startWith(kid) {
+    if (sb || !kid) return; // כבר אותחל / אין מזהה עדיין
+    KENNEL_ID = kid;
+    if (window.BoarDogCloud) window.BoarDogCloud.kennelId = kid;
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: false } });
     seedIfEmpty().then(pull).then(() => { subscribe(); startAutoRefresh(); });
+  }
+
+  function init() {
+    if (!window.supabase || !window.supabase.createClient) return; // אין רשת/CDN – ממשיכים מקומית
+    const kid = resolveKennelId();
+    if (kid) startWith(kid);
+    // בצד הבעלים לפני התחברות — מחכים לאירוע ההתחברות ואז מאתחלים
+    else document.addEventListener('boardog:owner-auth', () => startWith(resolveKennelId()));
   }
   // ניקוי מלא של היומן (פגישות, שהיות, דוחות) — מקומי + שרת. זמינות ומאפיינים נשמרים.
   async function clearAll() {
@@ -163,7 +191,12 @@
     }
   }
 
+  // קישור לצד הלקוח עם מזהה הפנסיון (לשיתוף / לבדיקה בין מכשירים)
+  function customerLink() {
+    const base = location.href.replace(/owner\.html.*$/, 'index.html').replace(/[?#].*$/, '');
+    return KENNEL_ID ? (base + '?k=' + encodeURIComponent(KENNEL_ID)) : '';
+  }
   // חשיפה לרענון יזום + שליחת הודעה ללקוח + ניקוי יומן (מדשבורד הבעלים)
-  window.BoarDogCloud = { refresh: pull, sendCustomerMessage: sendCustomerMessage, clearAll: clearAll, kennelId: KENNEL_ID };
+  window.BoarDogCloud = { refresh: pull, sendCustomerMessage: sendCustomerMessage, clearAll: clearAll, kennelId: KENNEL_ID, customerLink: customerLink };
   document.addEventListener('DOMContentLoaded', init);
 })();

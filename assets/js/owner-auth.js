@@ -57,7 +57,8 @@
   function signOut() {
     clear();
     try { if (global.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect(); } catch (e) {}
-    showLogin();
+    try { localStorage.removeItem('boardog.custKennel'); } catch (e) {}
+    location.reload(); // איפוס נקי — קליינט Supabase יאותחל מחדש עם/בלי הפנסיון
   }
 
   global.BoarDogOwnerAuth = { user: get, signOut: signOut };
