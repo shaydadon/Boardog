@@ -120,6 +120,7 @@
     function summary() {
       const ans = Object.assign({ customerId: S.customerId() }, answers);
       try { if (S.saveSummary) S.saveSummary(ans); } catch (e) {} // שמירה מתמשכת + סנכרון
+      stampSummaryOnEvents(S.customerId(), ans); // מצמיד את הדוח לאירוע היומן עצמו
       return { kennel: K.name, answers: ans };
     }
 
@@ -205,6 +206,18 @@
     }, additionalProperties: true } }
   ];
 
+  // מצמיד תמונת-מצב של הדוח לפגישה/שהייה האחרונה של אותה שיחה (כדי שכל אירוע יומן
+  // יישא את הדוח שלו, בלי תלות ב-customerId המשותף בין לקוחות באותו מכשיר בבדיקות)
+  function stampSummaryOnEvents(cid, summary) {
+    if (!cid || !summary) return;
+    try {
+      const mtg = S.meetings().filter(m => m.customerId === cid).slice(-1)[0];
+      if (mtg && S.updateMeeting) { mtg.summary = summary; S.updateMeeting(mtg); }
+      const brd = S.boardings().filter(b => b.customerId === cid).slice(-1)[0];
+      if (brd && S.updateBoarding) { brd.summary = summary; S.updateBoarding(brd); }
+    } catch (e) {}
+  }
+
   async function runTool(name, input) {
     if (name === 'lookup_customer') {
       const ret = S.isReturning(input.owner_name);
@@ -283,6 +296,7 @@
     const out = Object.assign({}, prior, m, { customerId: cid });
     delete out.id; delete out.updatedAt;
     try { if (S.saveSummary) S.saveSummary(out); } catch (e) {} // שמירה מתמשכת + סנכרון
+    stampSummaryOnEvents(cid, out); // מצמיד את הדוח לאירוע היומן עצמו (לא תלוי ב-customerId)
     return out;
   }
 

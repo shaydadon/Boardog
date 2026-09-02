@@ -10,8 +10,26 @@
   const KENNEL_NAME = 'הפנסיון של ג׳רי · שי';
   const HOURS = [8, 10, 12, 14, 16, 18, 20];
   const DOW = S.DOW;
+  const norm = s => String(s == null ? '' : s).trim().toLowerCase();
   let viewDate = new Date();
   const seen = { meet: new Set(), board: new Set() };
+
+  // הדוח של אירוע ספציפי: קודם התמונה שהוצמדה לאירוע; גיבוי — דוח לפי לקוח,
+  // אך רק אם שם הבעלים/הכלב תואם (מונע הצגת דוח של לקוח אחר במכשיר משותף)
+  function eventSummary(rec) {
+    if (!rec) return null;
+    if (rec.summary) return rec.summary;
+    if (rec.customerId && S.getSummary) {
+      const s = S.getSummary(rec.customerId);
+      if (s && (!rec.ownerName || !s.ownerName || norm(s.ownerName) === norm(rec.ownerName)) &&
+               (!rec.dogName || !s.dogName || norm(s.dogName) === norm(rec.dogName))) return s;
+    }
+    return null;
+  }
+  function openReport(sum) {
+    if (sum && window.BoarDogReport) window.BoarDogReport.openModal(sum);
+    else toast('אין עדיין דוח קליטה לאירוע זה');
+  }
 
   // התראה חיה על לידים/שריונים חדשים שנכנסו מהשרת
   function scanNew(initial) {
@@ -95,7 +113,7 @@
       meets.map(m => {
         const done = S.meetingFulfilled(m.id);
         const req = m.requestedStart ? `<div class="dd-req">🗓️ מבוקש ע״י הלקוח: ${esc(m.requestedStart)} → ${esc(m.requestedEnd)}</div>` : '';
-        const rBtn = (m.customerId && S.getSummary && S.getSummary(m.customerId)) ? `<button class="report-btn" data-report="${esc(m.customerId)}">📋 דוח קליטה</button>` : '';
+        const rBtn = eventSummary(m) ? `<button class="report-btn" data-report-meet="${esc(m.id)}">📋 דוח קליטה</button>` : '';
         return `<div class="dd-row meet">📋 פגישת היכרות ${m.time} — ${esc(m.dogName)} (${esc(m.ownerName)}) ` +
           `<button class="del-btn" title="מחק פגישה" data-del-meet="${esc(m.id)}">🗑</button>` + rBtn +
           (done ? `<span class="dd-tag ok">✓ תאריכים שוריינו</span>`
@@ -105,7 +123,7 @@
       }).join('') +
       boards.map(b => {
         const multi = b.start !== b.end;
-        const rBtn = (b.customerId && S.getSummary && S.getSummary(b.customerId)) ? `<button class="report-btn" data-report="${esc(b.customerId)}">📋 דוח קליטה</button>` : '';
+        const rBtn = eventSummary(b) ? `<button class="report-btn" data-report-board="${esc(b.id)}">📋 דוח קליטה</button>` : '';
         return `<div class="dd-row board">🏠 שהייה — ${esc(b.dogName)} (${esc(b.ownerName)}) · ${b.start}→${b.end}` + rBtn +
           `<div class="dd-del">` +
           (multi ? `<button class="del-btn" data-del-day="${esc(b.id)}">🗑 יום זה (${S.key(date)})</button>` : '') +
@@ -114,11 +132,15 @@
       }).join('');
     box.querySelectorAll('.mini-btn[data-mid]').forEach(btn =>
       btn.addEventListener('click', () => openReserve(btn, meets.find(m => m.id === btn.dataset.mid), date)));
-    box.querySelectorAll('[data-report]').forEach(btn =>
+    box.querySelectorAll('[data-report-meet]').forEach(btn =>
       btn.addEventListener('click', () => {
-        const sum = S.getSummary(btn.dataset.report);
-        if (sum && window.BoarDogReport) window.BoarDogReport.openModal(sum);
-        else toast('אין עדיין דוח קליטה ללקוח זה');
+        const rec = meets.find(m => m.id === btn.dataset.reportMeet);
+        openReport(eventSummary(rec));
+      }));
+    box.querySelectorAll('[data-report-board]').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const rec = boards.find(b => b.id === btn.dataset.reportBoard);
+        openReport(eventSummary(rec));
       }));
     box.querySelectorAll('[data-del-meet]').forEach(btn =>
       btn.addEventListener('click', () => {
@@ -223,6 +245,9 @@
         meeting: prev.meeting || (meeting.date ? meeting.date + (meeting.time ? ' ' + meeting.time : '') : '')
       });
       if (S.saveSummary) { try { S.saveSummary(full); } catch (e) {} }
+      // מצמיד את הדוח לאירוע השהייה החדש ולפגישה (כדי שכל אירוע יישא את הדוח שלו)
+      if (rec && rec.id) { rec.summary = full; S.updateBoarding(rec); }
+      if (meeting && meeting.id) { meeting.summary = full; S.updateMeeting(meeting); }
       notifyReport(meeting, full, `תודה ${meeting.ownerName || ''}! 🎉 השהייה של ${meeting.dogName || 'הכלב'} ב${KENNEL_NAME} אושרה ושוריינה: ${start} → ${end}. הנה סיכום הפרטים שקלטנו 🐾`);
       toast('התאריכים שוריינו — נשלח דוח מלא ללקוח ✓');
       renderCalendar();
