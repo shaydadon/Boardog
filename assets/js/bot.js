@@ -136,6 +136,7 @@
     '(4) בלי הרצאות ובלי הומור מוגזם — טבעי, אנושי וקצר. ' +
     'אל תחזור/י על שאלה שכבר נענתה; הסק/י פרטים מהקונטקסט (למשל אם הלקוח כתב "מלטז בן 3" — כבר יש לך גזע וגיל). ' +
     'אם הלקוח מציין שהשיחה נקטעה/קרסה, או שכבר דיברתם — התנצל/י בחום, הודה/י לו, והמשך/י בעדינות מאיפה שאפשר בלי להתחיל מחדש.\n' +
+    'אם הלקוח שואל אם יהיו כלבים אחרים בתקופת השהייה — *אל תנחש/י ואל תדבר/י על התפוסה המרבית*; קרא/י ל-check_dates עם התאריכים המבוקשים והשב/י לפי dogs_in_range האמיתי מהיומן (למשל: "בדקתי ביומן — באותם תאריכים רשומים כרגע 2 כלבים"). אם עדיין אין תאריכים, בקש/י אותם קודם.\n' +
     'תחילה שאל/י לשם הפונה, וקרא/י ל-lookup_customer עם owner_name כדי לבדוק אם זה לקוח קיים.\n' +
     '• אם returning=true (לקוח קיים): דלג/י על התשאול לגמרי, ברך/י אותו בשמו, ובקש/י ישירות את תאריכי השהייה. ' +
     'קרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
@@ -261,8 +262,9 @@
     const cfg = io.cfg || {};
     const messages = Array.isArray(saved.messages) ? saved.messages : [];
     let lastSummary = saved.lastSummary || null;
+    let doneSig = saved.doneSig || null; // חתימת הדוח האחרון שנשלח — כדי לא לשלוח שוב ללא שינוי
     let lastBotText = saved.lastBotText || ''; // השאלה/הודעה האחרונה שהבוט שלח — לחזרה עליה אם ה-AI נופל
-    function getState() { return { messages, lastSummary, lastBotText }; }
+    function getState() { return { messages, lastSummary, doneSig, lastBotText }; }
 
     function dynamicSystem() {
       const p = S.profile() || {};
@@ -349,7 +351,11 @@
         break;
       }
       io.typing(false);
-      if (lastSummary) io.done({ kennel: K.name, answers: lastSummary });
+      // הדוח נשלח פעם אחת בלבד — ושוב רק אם תוכנו באמת השתנה
+      if (lastSummary) {
+        const sig = JSON.stringify(lastSummary);
+        if (sig !== doneSig) { doneSig = sig; io.done({ kennel: K.name, answers: lastSummary }); }
+      }
     }
     return {
       start() { const a = messages.length; messages.push({ role: 'user', content: 'שלום' }); loop(a); },
