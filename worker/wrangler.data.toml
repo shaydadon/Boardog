@@ -1,0 +1,9 @@
+name = "boardog-data"
+main = "boardog-data.js"
+compatibility_date = "2024-11-01"
+
+# ה-URL וה-anon ציבוריים (משמשים רק לאימות ה-JWT של הבעלים).
+# את service_role מוסיפים כסוד:  wrangler secret put SUPABASE_SERVICE_ROLE --config wrangler.data.toml
+[vars]
+SUPABASE_URL = "https://egznewpwbcnhkzhmpckk.supabase.co"
+SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnem5ld3B3YmNuaGt6aG1wY2trIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxODg2MTQsImV4cCI6MjEwMzc2NDYxNH0.NXvgGh9BhLwlzyhKo1SZWmaVsyqutd1-PUpW1hR8oKI"
