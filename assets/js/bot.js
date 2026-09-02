@@ -163,8 +163,11 @@
     'אם הלקוח מציין שהשיחה נקטעה/קרסה, או שכבר דיברתם — התנצל/י בחום, הודה/י לו, והמשך/י בעדינות מאיפה שאפשר בלי להתחיל מחדש.\n' +
     'אם הלקוח שואל כמה כלבים יהיו / אם יהיו כלבים אחרים בתקופת השהייה — *חובה לקרוא ל-check_dates בכל פעם מחדש*. הכלי כבר חישב את התשובה: מסור/י ללקוח את השדה answer_he **כמעט מילה במילה**, ואת המספר other_dogs (כלבים אחרים) בדיוק כפי שחזר. *אסור לחשב או לחסר בעצמך, אסור לנחש מספר, ואסור לדבר על התפוסה המרבית במקום המספר בפועל.* אם עדיין אין תאריכים — בקש/י אותם קודם.\n' +
     'תחילה שאל/י לשם הפונה, וקרא/י ל-lookup_customer עם owner_name כדי לבדוק אם זה לקוח קיים.\n' +
-    '• אם returning=true (לקוח קיים): דלג/י על התשאול לגמרי, ברך/י אותו בשמו, ובקש/י ישירות את תאריכי השהייה. ' +
-    'קרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
+    '• אם returning=true (לקוח קיים): דלג/י על התשאול לגמרי וברך/י אותו בשמו. ' +
+    'lookup_customer מחזיר גם את מצב ההזמנה הקיים שלו בשדות meeting ו-boarding — התייחס/י אליהם ואל תשאל/י שוב על מה שכבר ידוע: ' +
+    '(א) אם חזר boarding — השהייה כבר שוריינה בתאריכים start–end. אם הלקוח שואל אם התאריכים שוריינו, אשר/י לו: "כן, השהייה של {dog} שוריינה מ-start עד end". אל תבקש/י תאריכים מחדש ואל תקרא/י שוב ל-book_boarding, אלא אם הלקוח מבקש במפורש תאריכים חדשים או שינוי. ' +
+    '(ב) אחרת אם חזר meeting — פגישת ההיכרות כבר נקבעה (ל-date בשעה time). אם יש requested_start/requested_end, אלה התאריכים שהלקוח ביקש והם ממתינים לאישור בפגישה. אם הלקוח שואל אם התאריכים שוריינו, הסבר/י בעדינות: השריון הסופי של תאריכי השהייה מתבצע בפגישת ההיכרות עצמה — וציין/י את התאריכים שביקש (אם יש) ואת מועד הפגישה. אל תתחיל/י תשאול מחדש. ' +
+    '(ג) רק אם אין meeting ואין boarding — בקש/י את תאריכי השהייה וקרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
     '• אם לקוח חדש: אסוף/אספי שם כלב, מין (זכר/נקבה), גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, אלרגיות, בריאות/תרופות, ' +
     'שאל/י את המין לפני שאלת העיקור/סירוס, והתאם/י את הניסוח למין: לזכר "האם הוא מסורס?", לנקבה "האם היא מעוקרת?". ' +
     'התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז — הכול בזרימה טבעית, שאלה אחת בכל פעם, לא כרשימה. ' +
@@ -220,12 +223,17 @@
 
   async function runTool(name, input) {
     if (name === 'lookup_customer') {
-      const ret = S.isReturning(input.owner_name);
       const prev = S.summaryForOwner ? S.summaryForOwner(input.owner_name) : null;
+      const mtg = S.lastMeetingFor ? S.lastMeetingFor(input.owner_name) : null;
+      const brd = S.lastBoardingFor ? S.lastBoardingFor(input.owner_name) : null;
+      const ret = S.isReturning(input.owner_name) || !!prev || !!mtg || !!brd;
       return {
-        returning: ret || !!prev,
-        last_dog: (prev && prev.dogName) || (ret ? S.lastDogFor(input.owner_name) : ''),
-        known: prev ? { dog_name: prev.dogName, breed: prev.breed, age: prev.age, size: prev.size, food: prev.food, allergies: prev.allergies } : null
+        returning: ret,
+        last_dog: (prev && prev.dogName) || (mtg && mtg.dogName) || (brd && brd.dogName) || (ret ? S.lastDogFor(input.owner_name) : ''),
+        known: prev ? { dog_name: prev.dogName, breed: prev.breed, age: prev.age, size: prev.size, food: prev.food, allergies: prev.allergies } : null,
+        // מצב ההזמנה הקיים של הלקוח — כדי שהבוט יזכור מה כבר נקבע ולא ישאל מחדש
+        meeting: mtg ? { date: mtg.date || '', time: mtg.time || '', requested_start: mtg.requestedStart || '', requested_end: mtg.requestedEnd || '' } : null,
+        boarding: brd ? { start: brd.start || '', end: brd.end || '' } : null
       };
     }
     if (name === 'get_available_slots') {

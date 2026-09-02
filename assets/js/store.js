@@ -123,6 +123,18 @@
       const hit = pick(Store.boardings()) || pick(Store.meetings()) || pick(Store.summaries());
       return (hit && hit.dogName) ? hit.dogName : '';
     },
+    // פגישת ההיכרות האחרונה של אותו בעלים (כולל התאריכים שביקש לבדוק) — מצב ההזמנה
+    lastMeetingFor(ownerName) {
+      const n = norm(ownerName);
+      if (!n) return null;
+      return Store.meetings().filter(m => norm(m.ownerName) === n).slice(-1)[0] || null;
+    },
+    // השהייה האחרונה שנשוריינה לאותו בעלים (אם כבר יש שריון תאריכים בפועל)
+    lastBoardingFor(ownerName) {
+      const n = norm(ownerName);
+      if (!n) return null;
+      return Store.boardings().filter(b => norm(b.ownerName) === n).slice(-1)[0] || null;
+    },
     // האם לפגישת היכרות כבר שוריינו תאריכי שהייה
     meetingFulfilled(meetingId) {
       return Store.boardings().some(b => b.meetingId === meetingId);
