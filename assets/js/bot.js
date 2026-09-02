@@ -273,12 +273,11 @@
       return SYSTEM + extra;
     }
     // תיקון היסטוריית ההודעות לפני שליחה ל-Claude, כדי למנוע 400:
-    //  1) הסרת בלוקי "חשיבה" (thinking) שנשארו מהרצות Opus קודמות.
-    //  2) הסרת בלוקי tool_use "יתומים" (בלי tool_result תואם — קורה כשתשובה
+    //  1) הסרת בלוקי tool_use "יתומים" (בלי tool_result תואם — קורה כשתשובה
     //     נחתכה ב-max_tokens באמצע קריאת כלי) ובלוקי tool_result יתומים.
-    //  3) השמטת הודעות שנשארו ללא תוכן.
+    //  2) השמטת הודעת assistant שנשארה עם בלוקי thinking בלבד (לא תקינה לשליחה).
+    // בלוקי thinking נשמרים כמו שהם — חובה להחזירם ללא שינוי לאותו מודל.
     function sanitize(msgs) {
-      // אילו tool_use_id באמת קיבלו tool_result, ולהפך
       const resultIds = new Set(), useIds = new Set();
       msgs.forEach(m => {
         if (Array.isArray(m.content)) m.content.forEach(b => {
@@ -290,12 +289,13 @@
       msgs.forEach(m => {
         if (!Array.isArray(m.content)) { if (m.content) out.push(m); return; }
         const c = m.content.filter(b => {
-          if (!b || b.type === 'thinking' || b.type === 'redacted_thinking') return false;
+          if (!b) return false;
           if (b.type === 'tool_use') return resultIds.has(b.id);        // רק אם יש תוצאה תואמת
           if (b.type === 'tool_result') return useIds.has(b.tool_use_id); // רק אם יש קריאה תואמת
-          return true;
+          return true; // text / thinking / redacted_thinking — נשמרים
         });
-        if (c.length) out.push({ role: m.role, content: c });
+        const meaningful = c.some(b => b.type !== 'thinking' && b.type !== 'redacted_thinking');
+        if (c.length && meaningful) out.push({ role: m.role, content: c });
       });
       return out;
     }
@@ -333,7 +333,9 @@
           return;
         }
         messages.push({ role: 'assistant', content: res.content });
-        const texts = res.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+        let texts = res.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+        // רשת ביטחון: אם דלפה קריאת-כלי כטקסט (תגי XML) — לא מציגים אותה ללקוח
+        if (/(antml:)?invoke\b|function_calls|<\s*parameter/i.test(texts)) texts = '';
         if (texts) { lastBotText = texts; io.bot({ text: texts }); }
         const toolUses = res.content.filter(b => b.type === 'tool_use');
         if (res.stop_reason === 'tool_use' && toolUses.length) {
@@ -375,7 +377,7 @@
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 2048, thinking: { type: 'disabled' }, system: payload.system, tools: payload.tools, messages: payload.messages })
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 2048, thinking: { type: 'adaptive' }, output_config: { effort: 'low' }, system: payload.system, tools: payload.tools, messages: payload.messages })
     });
     if (!res.ok) throw await httpErr('claude', res);
     return res.json();

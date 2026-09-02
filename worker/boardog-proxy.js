@@ -45,9 +45,10 @@ export default {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: env.MODEL || 'claude-sonnet-5', // עברית רהוטה ויציבה לצ'אט קליטה; thinking כבוי (לא צריך חשיבה עמוקה)
+        model: env.MODEL || 'claude-sonnet-5', // עברית רהוטה ויציבה; thinking אדפטיבי + effort נמוך (מונע דליפת קריאת-כלי כטקסט)
         max_tokens: 2048,
-        thinking: { type: 'disabled' },
+        thinking: { type: 'adaptive' },
+        output_config: { effort: 'low' },
         system: body.system,
         tools: body.tools,
         messages: body.messages
