@@ -64,6 +64,17 @@ export default {
     let body;
     try { body = await request.json(); } catch (e) { return json({ error: 'bad json' }, 400, origin); }
 
+    // ----- תקרת AI חודשית לכל פנסיון (בקרת עלות ל-SaaS) -----
+    // נאכף רק אם הוגדרו SUPABASE_SERVICE_ROLE + SUPABASE_URL; אחרת התנהגות כרגיל.
+    const kennel = String(body.kennel || 'default').slice(0, 64);
+    const enforce = env.SUPABASE_SERVICE_ROLE && env.SUPABASE_URL;
+    const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const limit = parseInt(env.AI_MONTHLY_LIMIT || '2000', 10);
+    if (enforce) {
+      const used = await getMonthlyUsage(env, kennel, month);
+      if (used >= limit) return json({ error: 'quota_exceeded', used, limit }, 429, origin);
+    }
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -83,9 +94,37 @@ export default {
     });
     const raw = await res.text();
     if (!res.ok) return json({ error: 'upstream', status: res.status, detail: raw.slice(0, 400) }, 502, origin);
+    // סופרים רק בקשה שהצליחה
+    if (enforce) {
+      const n = await incrementMonthly(env, kennel, month);
+      try { const obj = JSON.parse(raw); obj._quota = { used: (typeof n === 'number' ? n : null), limit: limit }; return json(obj, 200, origin); } catch (e) {}
+    }
     return new Response(raw, { status: 200, headers: { 'content-type': 'application/json', ...cors(origin) } });
   }
 };
+
+/* ---- תקרת AI חודשית לכל פנסיון (Supabase, service_role בלבד) ---- */
+async function getMonthlyUsage(env, kennel, month) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/kennel_ai_usage?kennel=eq.${encodeURIComponent(kennel)}&month=eq.${month}&select=count`, {
+      headers: { apikey: env.SUPABASE_SERVICE_ROLE, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_ROLE }
+    });
+    if (!r.ok) return 0;
+    const rows = await r.json();
+    return (rows[0] && rows[0].count) || 0;
+  } catch (e) { return 0; }
+}
+async function incrementMonthly(env, kennel, month) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/increment_kennel_ai_usage`, {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_SERVICE_ROLE, Authorization: 'Bearer ' + env.SUPABASE_SERVICE_ROLE, 'content-type': 'application/json' },
+      body: JSON.stringify({ p_kennel: kennel, p_month: month })
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
 
 // Durable Object – מונה בקשות עקבי לכל IP (חלון קבוע של 60 שניות).
 // גרסת SQLite (new_sqlite_classes) כדי לעבוד גם בתוכנית החינמית.

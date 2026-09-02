@@ -164,6 +164,6 @@
   }
 
   // חשיפה לרענון יזום + שליחת הודעה ללקוח + ניקוי יומן (מדשבורד הבעלים)
-  window.BoarDogCloud = { refresh: pull, sendCustomerMessage: sendCustomerMessage, clearAll: clearAll };
+  window.BoarDogCloud = { refresh: pull, sendCustomerMessage: sendCustomerMessage, clearAll: clearAll, kennelId: KENNEL_ID };
   document.addEventListener('DOMContentLoaded', init);
 })();

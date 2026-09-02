@@ -383,7 +383,11 @@
       let lastErr;
       for (let a = 0; a < 4; a++) {
         try { return await call(); }
-        catch (e) { lastErr = e; if (a < 3) await new Promise(r => setTimeout(r, 800 * Math.pow(2, a))); }
+        catch (e) {
+          lastErr = e;
+          if (e && (e.code === 'quota' || e.code === 'rate')) throw e; // אין טעם לנסות שוב על 429
+          if (a < 3) await new Promise(r => setTimeout(r, 800 * Math.pow(2, a)));
+        }
       }
       throw lastErr;
     }
@@ -398,10 +402,15 @@
         } catch (e) {
           io.typing(false);
           try { console.warn('[BoarDog] AI call failed:', e && e.message, e && e.detail); } catch (_) {}
-          // קוד שגיאה קצר לאבחון (מוצג ללקוח בסוגריים)
-          const code = (e && e.status) ? (' (שגיאה ' + e.status + ')') : (e && e.message ? ' (' + e.message + ')' : '');
-          // שומרים את השיחה: חוזרים למצב תקין אחרון וחוזרים על השאלה הקודמת (בלי להתחיל מחדש)
           if (typeof anchor === 'number') messages.length = anchor;
+          // תקרת AI חודשית של הפנסיון / מגבלת קצב — הודעה עדינה, בלי קוד שגיאה
+          if (e && (e.code === 'quota' || e.code === 'rate')) {
+            io.bot({ text: e.code === 'quota'
+              ? `תודה על הפנייה! 🐾 ${K.ownerName} מ${K.name} יחזור אליך אישית בהקדם להמשך הקליטה.`
+              : 'קיבלנו הרבה פניות כרגע 🙏 נסו שוב בעוד רגע.' });
+            return;
+          }
+          const code = (e && e.status) ? (' (שגיאה ' + e.status + ')') : (e && e.message ? ' (' + e.message + ')' : '');
           io.bot({ text: lastBotText
             ? 'סליחה, הייתה לי תקלה רגעית 🙏' + code + ' נחזור רגע לשאלה:\n' + lastBotText
             : 'סליחה, הייתה לי תקלה רגעית 🙏' + code + ' אפשר לשלוח שוב?' });
@@ -448,7 +457,13 @@
     return err;
   }
   async function callProxy(url, payload) {
-    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    const kennel = (window.BoarDogCloud && window.BoarDogCloud.kennelId) || 'default';
+    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ kennel: kennel }, payload)) });
+    if (res.status === 429) { // מגבלת קצב או תקרת AI חודשית של הפנסיון
+      let e; try { e = await res.json(); } catch (_) { e = {}; }
+      const err = new Error('quota'); err.code = (e && e.error === 'quota_exceeded') ? 'quota' : 'rate'; err.status = 429;
+      throw err;
+    }
     if (!res.ok) throw await httpErr('proxy', res);
     return res.json();
   }
