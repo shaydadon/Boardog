@@ -45,7 +45,51 @@
     if (!r.ok) { const e = new Error('data ' + r.status); e.status = r.status; throw e; }
     return r.json();
   }
-  const fire = (action, extra) => { try { if (ready) api(action, extra).catch(() => {}); } catch (e) {} };
+  /* ---------- תור סנכרון עמיד (outbox) — אף כתיבה לא אובדת ---------- */
+  // כל פעולת כתיבה נשמרת בתור מתמשך ב-localStorage ומנוסה שוב ושוב עד
+  // שהיא באמת מגיעה לשרת (גם אחרי כישלון רשת / טעינה / חוסר חיבור).
+  const OUTBOX = 'boardog.outbox';
+  const loadOutbox = () => getLocal(OUTBOX, []);
+  const saveOutbox = (q) => setLocal(OUTBOX, q);
+  function opKey(action, extra) {
+    extra = extra || {};
+    if (action === 'upsert') return 'upsert:' + extra.table + ':' + (extra.rec && extra.rec.id);
+    if (action === 'save_summary') return 'save_summary:' + (extra.rec && extra.rec.id);
+    if (action === 'delete') return 'delete:' + extra.table + ':' + extra.id;
+    if (action === 'set_availability') return 'set_availability';
+    if (action === 'set_profile') return 'set_profile';
+    return action + ':' + Date.now() + ':' + Math.random();
+  }
+  function enqueue(action, extra) {
+    const q = loadOutbox();
+    const key = opKey(action, extra);
+    // מחיקה של רשומה מבטלת upsert ממתין לאותה רשומה (לא ליצור מחדש מה שנמחק)
+    if (action === 'delete') {
+      const uk = 'upsert:' + (extra && extra.table) + ':' + (extra && extra.id);
+      for (let i = q.length - 1; i >= 0; i--) if (q[i].id === uk) q.splice(i, 1);
+    }
+    const item = { id: key, action: action, extra: extra || {}, ts: Date.now() };
+    const i = q.findIndex(x => x.id === key);
+    if (i >= 0) q[i] = item; else q.push(item);
+    saveOutbox(q);
+    flush();
+  }
+  let flushing = false;
+  async function flush() {
+    if (!ready || flushing) return;
+    flushing = true;
+    try {
+      let q = loadOutbox();
+      while (q.length) {
+        const item = q[0];
+        try { await api(item.action, item.extra); }
+        catch (e) { break; } // כישלון → משאירים בתור, ננסה שוב מאוחר יותר
+        q = loadOutbox().filter(x => x.id !== item.id);
+        saveOutbox(q);
+      }
+    } finally { flushing = false; }
+  }
+  const fire = (action, extra) => enqueue(action, extra);
 
   /* ---------- עטיפת פעולות הכתיבה של המאגר → דחיפה לשרת ---------- */
   const _setAvail = S.setAvailability.bind(S);
@@ -97,6 +141,16 @@
     } catch (e) {}
   }
 
+  /* ---------- פיוס מקומי→שרת: כל רשומה מקומית נדחפת לתור (idempotent) ----------
+     מבטיח שאף פגישה שנשמרה מקומית לא "תיתקע" ולא תגיע ליומן. חייב לרוץ לפני
+     ה-pull הראשון כדי לתפוס רשומות מקומיות לפני שהמשיכה מהשרת דורסת אותן. */
+  function reconcileLocal() {
+    const mineM = (m) => isOwnerPage() || !MYID || String((m && m.customerId) || '') === String(MYID);
+    getLocal(K.meet, []).forEach(m => { if (m && m.id && mineM(m)) enqueue('upsert', { table: 'meetings', rec: m }); });
+    getLocal(K.board, []).forEach(b => { if (b && b.id && mineM(b)) enqueue('upsert', { table: 'boardings', rec: b }); });
+    getLocal(K.sum, []).forEach(s => { if (s && s.id && mineM(s)) enqueue('save_summary', { rec: s }); });
+  }
+
   /* ---------- זריעה ראשונית של נתונים מקומיים לפנסיון החדש (בעלים) ---------- */
   async function seedIfEmpty() {
     if (!isOwnerPage()) return;
@@ -127,11 +181,12 @@
     try { await api('clear'); } catch (e) {}
   }
 
-  /* ---------- רשתות ביטחון (polling — אין realtime בלי anon) ---------- */
+  /* ---------- רשתות ביטחון (polling + ריקון התור) ---------- */
   function startAutoRefresh() {
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { pull(); pollInbox(); } });
-    window.addEventListener('focus', () => { pull(); pollInbox(); });
-    setInterval(() => { if (!document.hidden) { pull(); pollInbox(); } }, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { flush(); pull(); pollInbox(); } });
+    window.addEventListener('focus', () => { flush(); pull(); pollInbox(); });
+    window.addEventListener('online', () => { flush(); pull(); });
+    setInterval(() => { if (!document.hidden) { flush(); pull(); pollInbox(); } }, 12000);
   }
 
   /* ---------- קביעת מזהה הפנסיון (multi-tenancy) ---------- */
@@ -192,8 +247,13 @@
     if (ready || !kid) return;
     KENNEL_ID = kid; ready = true;
     if (window.BoarDogCloud) window.BoarDogCloud.kennelId = kid;
-    // בדף הבעלים ממתינים לטוקן תקף לפני זריעה, אחרת הכתיבה הראשונה נדחית
-    waitForOwnerToken(6000).then(seedIfEmpty).then(pull).then(() => { startAutoRefresh(); pollInbox(); });
+    // בדף הבעלים ממתינים לטוקן תקף לפני זריעה, אחרת הכתיבה הראשונה נדחית.
+    // reconcileLocal רץ לפני pull — תופס רשומות מקומיות תקועות לפני שהמשיכה דורסת.
+    waitForOwnerToken(6000)
+      .then(seedIfEmpty)
+      .then(() => { reconcileLocal(); return flush(); })
+      .then(pull)
+      .then(() => { startAutoRefresh(); pollInbox(); });
   }
 
   function init() {
