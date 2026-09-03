@@ -64,15 +64,23 @@
   S.removeBoarding = function (id) { _removeBoarding(id); fire('delete', { table: 'boardings', id: id }); };
 
   /* ---------- משיכה מהשרת → מקומי → רענון מסך ---------- */
+  let firstPull = true;
   async function pull() {
     if (!ready) return;
     try {
       const d = await api('pull');
+      // הגנה: בטעינה הראשונה אל תמחק נתונים מקומיים אם השרת עדיין ריק
+      // (טננט חדש / לא מסונכרן / השרת טרם זיהה את הבעלים)
+      const keep = (arr, key) => {
+        if (firstPull && (!arr || !arr.length) && getLocal(key, []).length) return;
+        if (Array.isArray(arr)) setLocal(key, arr);
+      };
       if (d.availability) setLocal(K.avail, d.availability);
-      if (Array.isArray(d.meetings)) setLocal(K.meet, d.meetings);
-      if (Array.isArray(d.boardings)) setLocal(K.board, d.boardings);
       if (d.profile) setLocal(K.prof, d.profile);
-      if (Array.isArray(d.summaries)) setLocal(K.sum, d.summaries);
+      keep(d.meetings, K.meet);
+      keep(d.boardings, K.board);
+      keep(d.summaries, K.sum);
+      firstPull = false;
       emit();
     } catch (e) {}
   }
@@ -120,11 +128,16 @@
   }
   function resolveKennelId() {
     if (isOwnerPage()) return ownerKennelId();
+    // 1) קישור מפורש (?k=) תמיד מנצח ונשמר לפעם הבאה
     let k = null;
     try { k = new URLSearchParams(location.search).get('k'); } catch (e) {}
     if (k) { try { localStorage.setItem('boardog.custKennel', k); } catch (e) {} return k; }
+    // 2) בעלים מחובר על אותו מכשיר (בדיקה עצמית של תצוגת הלקוח) — קודם לכל cache ישן
+    const own = ownerKennelId();
+    if (own) return own;
+    // 3) הקישור האחרון ששימש במכשיר הזה
     try { k = localStorage.getItem('boardog.custKennel'); } catch (e) {}
-    return k || ownerKennelId() || 'jerry';
+    return k || 'jerry';
   }
 
   function startWith(kid) {
