@@ -34,7 +34,8 @@ async function sbGet(env, path) {
 }
 async function sbWrite(env, method, path, body, prefer) {
   const r = await fetch(env.SUPABASE_URL + '/rest/v1/' + path, { method, headers: sbHeaders(env, prefer ? { Prefer: prefer } : null), body: body ? JSON.stringify(body) : undefined });
-  return r.ok;
+  if (!r.ok) { let t = ''; try { t = await r.text(); } catch (e) {} return { ok: false, status: r.status, error: (t || '').slice(0, 400) }; }
+  return { ok: true, status: r.status };
 }
 
 // אימות הבעלים לפי טוקן Google (ID token) → מזהה המשתמש (sub).
@@ -144,12 +145,14 @@ export default {
     // מאפיינים/זמינות — בעלים בלבד
     if (action === 'set_availability') {
       if (!isOwner) return json({ error: 'forbidden' }, 403, origin);
-      await sbWrite(env, 'POST', 'availability', { id: kennel, config: body.config || {}, updated_at: new Date().toISOString() }, 'resolution=merge-duplicates');
+      const w = await sbWrite(env, 'POST', 'availability', { id: kennel, config: body.config || {}, updated_at: new Date().toISOString() }, 'resolution=merge-duplicates');
+      if (!w.ok) return json({ error: 'write failed', status: w.status, detail: w.error }, 502, origin);
       return json({ ok: true }, 200, origin);
     }
     if (action === 'set_profile') {
       if (!isOwner) return json({ error: 'forbidden' }, 403, origin);
-      await sbWrite(env, 'POST', 'kennel_profile', { id: kennel, data: body.data || {}, updated_at: new Date().toISOString() }, 'resolution=merge-duplicates');
+      const w = await sbWrite(env, 'POST', 'kennel_profile', { id: kennel, data: body.data || {}, updated_at: new Date().toISOString() }, 'resolution=merge-duplicates');
+      if (!w.ok) return json({ error: 'write failed', status: w.status, detail: w.error }, 502, origin);
       return json({ ok: true }, 200, origin);
     }
 
@@ -160,7 +163,8 @@ export default {
       if (!rec || !rec.id) return json({ error: 'bad rec' }, 400, origin);
       if (!isOwner && !CUSTOMER_TABLES[table]) return json({ error: 'forbidden' }, 403, origin);
       if (table !== 'meetings' && table !== 'boardings') return json({ error: 'bad table' }, 400, origin);
-      await sbWrite(env, 'POST', table, { id: rec.id, kennel: kennel, data: rec }, 'resolution=merge-duplicates');
+      const w = await sbWrite(env, 'POST', table, { id: rec.id, kennel: kennel, data: rec }, 'resolution=merge-duplicates');
+      if (!w.ok) return json({ error: 'write failed', status: w.status, detail: w.error }, 502, origin);
       return json({ ok: true }, 200, origin);
     }
     if (action === 'save_summary') {
@@ -168,7 +172,8 @@ export default {
       if (!rec || !rec.id) return json({ error: 'bad rec' }, 400, origin);
       // לקוח רשאי לשמור רק את הדוח שלו (id === customerId שלו)
       if (!isOwner && String(rec.customerId || '') !== String(body.customerId || '')) return json({ error: 'forbidden' }, 403, origin);
-      await sbWrite(env, 'POST', 'summaries', { id: rec.id, kennel: kennel, data: rec }, 'resolution=merge-duplicates');
+      const w = await sbWrite(env, 'POST', 'summaries', { id: rec.id, kennel: kennel, data: rec }, 'resolution=merge-duplicates');
+      if (!w.ok) return json({ error: 'write failed', status: w.status, detail: w.error }, 502, origin);
       return json({ ok: true }, 200, origin);
     }
 
