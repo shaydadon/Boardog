@@ -21,15 +21,27 @@
   let ready = false;
   const isOwnerPage = () => !!document.getElementById('owner-app');
 
+  const ownerToken = () => (window.BoarDogOwnerAuth && window.BoarDogOwnerAuth.token && window.BoarDogOwnerAuth.token()) || null;
+  // ממתין עד שיש טוקן Google תקף (בדף הבעלים) — מונע מרוץ שבו כתיבת הבעלים
+  // הראשונה יוצאת לפני רענון הטוקן ונדחית ב-403.
+  async function waitForOwnerToken(ms) {
+    if (!isOwnerPage() || ownerToken()) return;
+    try { window.BoarDogOwnerAuth && window.BoarDogOwnerAuth.refresh && window.BoarDogOwnerAuth.refresh(); } catch (e) {}
+    const end = Date.now() + (ms || 6000);
+    while (Date.now() < end) { if (ownerToken()) return; await new Promise(r => setTimeout(r, 300)); }
+  }
+
   async function api(action, extra) {
     if (!KENNEL_ID) throw new Error('no kennel');
-    const headers = { 'content-type': 'application/json' };
-    if (isOwnerPage()) {
-      const t = window.BoarDogOwnerAuth && window.BoarDogOwnerAuth.token && window.BoarDogOwnerAuth.token();
-      if (t) headers['Authorization'] = 'Bearer ' + t;
-    }
-    const body = Object.assign({ action: action, kennel: KENNEL_ID, customerId: MYID }, extra || {});
-    const r = await fetch(DATA_URL, { method: 'POST', headers: headers, body: JSON.stringify(body) });
+    const send = () => {
+      const headers = { 'content-type': 'application/json' };
+      if (isOwnerPage()) { const t = ownerToken(); if (t) headers['Authorization'] = 'Bearer ' + t; }
+      const body = Object.assign({ action: action, kennel: KENNEL_ID, customerId: MYID }, extra || {});
+      return fetch(DATA_URL, { method: 'POST', headers: headers, body: JSON.stringify(body) });
+    };
+    let r = await send();
+    // 403 בדף הבעלים = טוקן פג/טרם מוכן → רענון והזרקה חוזרת פעם אחת
+    if (r.status === 403 && isOwnerPage()) { await waitForOwnerToken(6000); r = await send(); }
     if (!r.ok) { const e = new Error('data ' + r.status); e.status = r.status; throw e; }
     return r.json();
   }
@@ -144,7 +156,8 @@
     if (ready || !kid) return;
     KENNEL_ID = kid; ready = true;
     if (window.BoarDogCloud) window.BoarDogCloud.kennelId = kid;
-    seedIfEmpty().then(pull).then(() => { startAutoRefresh(); pollInbox(); });
+    // בדף הבעלים ממתינים לטוקן תקף לפני זריעה, אחרת הכתיבה הראשונה נדחית
+    waitForOwnerToken(6000).then(seedIfEmpty).then(pull).then(() => { startAutoRefresh(); pollInbox(); });
   }
 
   function init() {
