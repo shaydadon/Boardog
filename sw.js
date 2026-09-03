@@ -1,5 +1,5 @@
 /* BoarDog – Service Worker (PWA, עבודה לא מקוונת) */
-const CACHE = 'boardog-v27';
+const CACHE = 'boardog-v28';
 const ASSETS = [
   '.',
   'index.html',

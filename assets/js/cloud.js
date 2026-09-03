@@ -147,9 +147,45 @@
     // 2) בעלים מחובר על אותו מכשיר (בדיקה עצמית של תצוגת הלקוח) — קודם לכל cache ישן
     const own = ownerKennelId();
     if (own) return own;
-    // 3) הקישור האחרון ששימש במכשיר הזה
+    // 3) הקישור האחרון ששימש במכשיר הזה (נדבק אחרי חיבור ראשון)
     try { k = localStorage.getItem('boardog.custKennel'); } catch (e) {}
-    return k || 'jerry';
+    return k || null;   // אין נפילה שקטה לפנסיון ברירת מחדל — מציגים מסך חיבור
+  }
+
+  // חילוץ מזהה פנסיון מקישור מלא / ?k=... / קוד גולמי (k_...)
+  function parseKennel(input) {
+    input = (input || '').trim();
+    if (!input) return null;
+    try { const u = new URL(input); const kk = new URLSearchParams(u.search).get('k'); if (kk) return kk; } catch (e) {}
+    const m = input.match(/[?&]k=([^&#\s]+)/); if (m) return decodeURIComponent(m[1]);
+    if (/^k_[\w-]+$/.test(input)) return input;
+    return null;
+  }
+
+  // מסך חיבור חד-פעמי ללקוח שאין לו מזהה פנסיון (במקום נפילה ל-jerry)
+  function showConnect() {
+    if (document.getElementById('bd-connect')) return;
+    const wrap = document.createElement('div');
+    wrap.id = 'bd-connect';
+    wrap.setAttribute('style', 'position:fixed;inset:0;z-index:9999;background:#efeae2;display:flex;align-items:center;justify-content:center;padding:24px;font-family:inherit;');
+    wrap.innerHTML =
+      '<div style="max-width:360px;width:100%;background:#fff;border-radius:18px;padding:28px 22px;box-shadow:0 10px 40px rgba(0,0,0,.12);text-align:center;">' +
+      '<img src="assets/logo.jpg" alt="" style="width:84px;height:84px;border-radius:20px;object-fit:cover;margin:0 auto 14px;display:block;" onerror="this.style.display=\'none\'"/>' +
+      '<h2 style="margin:0 0 6px;font-size:20px;color:#075e54;">התחברות לפנסיון</h2>' +
+      '<p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.5;">הדביקו את הקישור שקיבלתם מהפנסיון כדי להתחיל. נשמר במכשיר — פעם אחת בלבד.</p>' +
+      '<input id="bd-connect-input" type="text" inputmode="url" placeholder="הדביקו קישור או קוד פנסיון" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid #ccc;border-radius:12px;font-size:15px;text-align:center;margin-bottom:10px;"/>' +
+      '<div id="bd-connect-err" style="color:#c0392b;font-size:13px;min-height:18px;margin-bottom:6px;"></div>' +
+      '<button id="bd-connect-go" style="width:100%;padding:12px;background:#075e54;color:#fff;border:0;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;">התחבר</button>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    const go = function () {
+      const k = parseKennel(document.getElementById('bd-connect-input').value);
+      if (!k) { document.getElementById('bd-connect-err').textContent = 'קישור לא תקין — ודאו שהעתקתם את הקישור המלא'; return; }
+      try { localStorage.setItem('boardog.custKennel', k); } catch (e) {}
+      location.reload();
+    };
+    document.getElementById('bd-connect-go').addEventListener('click', go);
+    document.getElementById('bd-connect-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
   }
 
   function startWith(kid) {
@@ -162,8 +198,9 @@
 
   function init() {
     const kid = resolveKennelId();
-    if (kid) startWith(kid);
-    else document.addEventListener('boardog:owner-auth', () => startWith(resolveKennelId()));
+    if (kid) { startWith(kid); return; }
+    if (isOwnerPage()) { document.addEventListener('boardog:owner-auth', () => startWith(resolveKennelId())); return; }
+    showConnect();   // לקוח בלי מזהה פנסיון → מסך חיבור (לא נופלים ל-jerry)
   }
 
   function customerLink() {
