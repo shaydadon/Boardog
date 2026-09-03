@@ -37,14 +37,18 @@ async function sbWrite(env, method, path, body, prefer) {
   return r.ok;
 }
 
-// אימות הבעלים לפי JWT של Supabase → מזהה משתמש
+// אימות הבעלים לפי טוקן Google (ID token) → מזהה המשתמש (sub).
+// עקבי עם ה-multi-tenancy בצד הלקוח (k_<google sub>).
+const DEFAULT_CLIENT_ID = '372588686007-8qmm1i1jgtfipfmbcqrsh1g2p01tp6gb.apps.googleusercontent.com';
 async function verifyOwner(env, token) {
-  if (!token || !env.SUPABASE_URL || !env.SUPABASE_ANON) return null;
+  if (!token) return null;
   try {
-    const r = await fetch(env.SUPABASE_URL + '/auth/v1/user', { headers: { apikey: env.SUPABASE_ANON, Authorization: 'Bearer ' + token } });
+    const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(token));
     if (!r.ok) return null;
-    const u = await r.json();
-    return u && u.id ? u.id : null;
+    const p = await r.json();
+    if (p.aud !== (env.GOOGLE_CLIENT_ID || DEFAULT_CLIENT_ID)) return null; // הונפק לאפליקציה שלנו
+    if (p.exp && (Date.now() / 1000) > Number(p.exp)) return null;          // לא פג
+    return p.sub || null;
   } catch (e) { return null; }
 }
 

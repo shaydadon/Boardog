@@ -51,8 +51,25 @@
   function onCredential(resp) {
     if (!resp || !resp.credential) return;
     const u = decode(resp.credential);
-    const acc = { email: u.email || '', name: u.name || '', picture: u.picture || '', sub: u.sub || '' };
-    set(acc); showApp(acc);
+    const prev = get() || {};
+    const acc = { email: u.email || prev.email || '', name: u.name || prev.name || '', picture: u.picture || prev.picture || '', sub: u.sub || prev.sub || '', token: resp.credential, exp: u.exp || 0 };
+    set(acc);
+    showApp(acc);
+    document.dispatchEvent(new CustomEvent('boardog:owner-token'));
+  }
+  // טוקן Google תקף (לאימות מול שרת הנתונים). null אם פג/חסר.
+  function token() {
+    const u = get();
+    if (u && u.token && u.exp && (u.exp * 1000 > Date.now() + 60000)) return u.token;
+    return null;
+  }
+  // רענון שקט של הטוקן (One Tap) — נקרא תקופתית וכשהטוקן עומד לפוג
+  function refresh() {
+    loadGIS(function () {
+      if (!global.google || !google.accounts || !google.accounts.id) return;
+      if (!gisInit) { google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCredential, auto_select: true }); gisInit = true; }
+      try { google.accounts.id.prompt(); } catch (e) {}
+    });
   }
   function signOut() {
     clear();
@@ -61,11 +78,15 @@
     location.reload(); // איפוס נקי — קליינט Supabase יאותחל מחדש עם/בלי הפנסיון
   }
 
-  global.BoarDogOwnerAuth = { user: get, signOut: signOut };
+  global.BoarDogOwnerAuth = { user: get, token: token, refresh: refresh, signOut: signOut };
 
   document.addEventListener('DOMContentLoaded', function () {
     const so = document.getElementById('owner-signout');
     if (so) so.addEventListener('click', signOut);
-    if (get()) showApp(get()); else showLogin();
+    if (get()) {
+      showApp(get());
+      if (!token()) refresh();                 // טוקן פג — רענון שקט
+      setInterval(function () { if (!token()) refresh(); }, 5 * 60 * 1000);
+    } else showLogin();
   });
 })(window);

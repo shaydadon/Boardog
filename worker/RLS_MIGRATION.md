@@ -30,13 +30,16 @@ wrangler secret put SUPABASE_SERVICE_ROLE --config wrangler.data.toml
 
 ---
 
-## שלב 2 — העברת הלקוחות לשרת (Phase הבא)
+## שלב 2 — העברת הלקוחות לשרת  ✅ (הקוד מוכן)
 
-1. הבעלים יעבור מ-Google Identity Services ל-**Supabase Auth (Google)** כדי
-   שיהיה לו JWT מתמשך שהשרת יכול לאמת (אותו פרויקט Supabase של Excerly).
-2. `cloud.js` יתחבר ל-`boardog-data` במקום ל-Supabase ישירות (בעלים עם טוקן,
-   לקוח עם `kennel`). ה-realtime יוחלף ב-polling (כבר קיים כרשת ביטחון).
-3. בדיקה מקצה לקצה שהכל עובד דרך השרת.
+1. הבעלים מזדהה מול השרת עם **טוקן Google** (ID token מה-GIS הקיים). השרת
+   מאמת אותו מול Google (tokeninfo + בדיקת aud) ומזהה את הפנסיון = `k_<sub>`.
+2. `cloud.js` מדבר עכשיו רק עם `boardog-data` (מקומי-קודם, best-effort).
+   ה-realtime הוחלף ב-polling כל 15 שניות (+ רענון בפוקוס/חזרה לטאב).
+3. **חשוב — לפרוס מחדש את שרת הנתונים** אחרי שינוי אימות הבעלים:
+   `wrangler deploy --config wrangler.data.toml`
+4. בדיקה מקצה לקצה: התחברות בעלים → שמירת מאפיינים/יומן; קליטת לקוח דרך
+   הקישור → הופעה אצל הבעלים. ורק כשהכל עובד — עוברים לשלב 3.
 
 ---
 

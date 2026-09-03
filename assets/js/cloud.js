@@ -1,19 +1,13 @@
 /* =============================================================
-   BoarDog – שרת משותף (Supabase)
-   מסנכרן בזמן אמת את הזמינות, פגישות ההיכרות והשהיות בין צד הלקוח
-   לצד בעל הפנסיון — על פני מכשירים שונים. הבעלים קובע זמינות → הלקוח
-   רואה ומזמין → הבעלים רואה את ההזמנה מיד.
-
-   מבנה: מאגר משותף אחד לפנסיון (KENNEL_ID). ללא התחברות — פרוטוטיפ
-   פתוח (anon read/write). מה שנשמר מקומית ממשיך לעבוד גם בלי רשת.
+   BoarDog – סנכרון דרך שרת הנתונים (boardog-data Worker)
+   אין יותר גישת anon ישירה ל-Supabase: כל קריאה/כתיבה עוברת דרך
+   שרת הנתונים שמאמת ומגביל לפי תפקיד (בעלים/לקוח). מקומי-קודם:
+   הכתיבה נשמרת מיד ב-localStorage, והדחיפה לשרת היא best-effort.
    ============================================================= */
 (function () {
   'use strict';
 
-  const SUPABASE_URL = 'https://egznewpwbcnhkzhmpckk.supabase.co';
-  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnem5ld3B3YmNuaGt6aG1wY2trIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxODg2MTQsImV4cCI6MjEwMzc2NDYxNH0.NXvgGh9BhLwlzyhKo1SZWmaVsyqutd1-PUpW1hR8oKI';
-  let KENNEL_ID = null; // מזהה הפנסיון — נקבע לפי חשבון הבעלים המחובר (או ?k= בצד הלקוח)
-
+  const DATA_URL = 'https://boardog-data.shaydadon.workers.dev';
   const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile', sum: 'boardog.summaries' };
   const S = window.BoarDogStore;
   if (!S) return;
@@ -22,140 +16,110 @@
   const getLocal = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } };
   const emit = () => document.dispatchEvent(new CustomEvent('boardog:sync'));
 
-  let sb = null;
+  let KENNEL_ID = null;
+  let MYID = (S.customerId ? S.customerId() : null);
+  let ready = false;
+  const isOwnerPage = () => !!document.getElementById('owner-app');
+
+  async function api(action, extra) {
+    if (!KENNEL_ID) throw new Error('no kennel');
+    const headers = { 'content-type': 'application/json' };
+    if (isOwnerPage()) {
+      const t = window.BoarDogOwnerAuth && window.BoarDogOwnerAuth.token && window.BoarDogOwnerAuth.token();
+      if (t) headers['Authorization'] = 'Bearer ' + t;
+    }
+    const body = Object.assign({ action: action, kennel: KENNEL_ID, customerId: MYID }, extra || {});
+    const r = await fetch(DATA_URL, { method: 'POST', headers: headers, body: JSON.stringify(body) });
+    if (!r.ok) { const e = new Error('data ' + r.status); e.status = r.status; throw e; }
+    return r.json();
+  }
+  const fire = (action, extra) => { try { if (ready) api(action, extra).catch(() => {}); } catch (e) {} };
 
   /* ---------- עטיפת פעולות הכתיבה של המאגר → דחיפה לשרת ---------- */
   const _setAvail = S.setAvailability.bind(S);
-  S.setAvailability = function (cfg) { _setAvail(cfg); pushAvail(cfg); };
+  S.setAvailability = function (cfg) { _setAvail(cfg); fire('set_availability', { config: cfg }); };
 
   const _setProfile = S.setProfile.bind(S);
-  S.setProfile = function (p) { _setProfile(p); pushProfile(p); };
+  S.setProfile = function (p) { _setProfile(p); fire('set_profile', { data: p || {} }); };
 
   const _addMeeting = S.addMeeting.bind(S);
-  S.addMeeting = function (m) { const rec = _addMeeting(m); pushInsert('meetings', rec); return rec; };
+  S.addMeeting = function (m) { const rec = _addMeeting(m); fire('upsert', { table: 'meetings', rec: rec }); return rec; };
 
   const _addBoarding = S.addBoarding.bind(S);
-  S.addBoarding = function (b) { const rec = _addBoarding(b); pushInsert('boardings', rec); return rec; };
+  S.addBoarding = function (b) { const rec = _addBoarding(b); fire('upsert', { table: 'boardings', rec: rec }); return rec; };
 
   const _updateMeeting = S.updateMeeting.bind(S);
-  S.updateMeeting = function (rec) { const out = _updateMeeting(rec); const full = S.meetings().find(m => m.id === (rec && rec.id)); if (full) pushInsert('meetings', full); return out; };
+  S.updateMeeting = function (rec) { const out = _updateMeeting(rec); const full = S.meetings().find(m => m.id === (rec && rec.id)); if (full) fire('upsert', { table: 'meetings', rec: full }); return out; };
 
   const _updateBoarding = S.updateBoarding.bind(S);
-  S.updateBoarding = function (rec) { const out = _updateBoarding(rec); const full = S.boardings().find(b => b.id === (rec && rec.id)); if (full) pushInsert('boardings', full); return out; };
+  S.updateBoarding = function (rec) { const out = _updateBoarding(rec); const full = S.boardings().find(b => b.id === (rec && rec.id)); if (full) fire('upsert', { table: 'boardings', rec: full }); return out; };
 
   const _saveSummary = S.saveSummary.bind(S);
-  S.saveSummary = function (data) { const rec = _saveSummary(data); if (rec) pushInsert('summaries', rec); return rec; };
+  S.saveSummary = function (data) { const rec = _saveSummary(data); if (rec) fire('save_summary', { rec: rec }); return rec; };
 
   const _removeMeeting = S.removeMeeting.bind(S);
-  S.removeMeeting = function (id) { _removeMeeting(id); pushDelete('meetings', id); };
+  S.removeMeeting = function (id) { _removeMeeting(id); fire('delete', { table: 'meetings', id: id }); };
 
   const _removeBoarding = S.removeBoarding.bind(S);
-  S.removeBoarding = function (id) { _removeBoarding(id); pushDelete('boardings', id); };
-
-  /* ---------- דחיפות ---------- */
-  async function pushAvail(cfg) {
-    if (!sb) return;
-    try { await sb.from('availability').upsert({ id: KENNEL_ID, config: cfg, updated_at: new Date().toISOString() }, { onConflict: 'id' }); } catch (e) {}
-  }
-  async function pushProfile(p) {
-    if (!sb) return;
-    try { await sb.from('kennel_profile').upsert({ id: KENNEL_ID, data: p || {}, updated_at: new Date().toISOString() }, { onConflict: 'id' }); } catch (e) {}
-  }
-  async function pushInsert(table, rec) {
-    if (!sb || !rec || !rec.id) return;
-    try { await sb.from(table).upsert({ id: rec.id, kennel: KENNEL_ID, data: rec }, { onConflict: 'id' }); } catch (e) {}
-  }
-  async function pushDelete(table, id) {
-    if (!sb) return;
-    try { await sb.from(table).delete().eq('id', id); } catch (e) {}
-  }
+  S.removeBoarding = function (id) { _removeBoarding(id); fire('delete', { table: 'boardings', id: id }); };
 
   /* ---------- משיכה מהשרת → מקומי → רענון מסך ---------- */
   async function pull() {
-    if (!sb) return;
+    if (!ready) return;
     try {
-      const [a, m, b, p, s] = await Promise.all([
-        sb.from('availability').select('config').eq('id', KENNEL_ID).maybeSingle(),
-        sb.from('meetings').select('data').eq('kennel', KENNEL_ID),
-        sb.from('boardings').select('data').eq('kennel', KENNEL_ID),
-        sb.from('kennel_profile').select('data').eq('id', KENNEL_ID).maybeSingle(),
-        sb.from('summaries').select('data').eq('kennel', KENNEL_ID)
-      ]);
-      if (a.data && a.data.config) setLocal(K.avail, a.data.config);
-      if (m.data) setLocal(K.meet, m.data.map(r => r.data).filter(Boolean));
-      if (b.data) setLocal(K.board, b.data.map(r => r.data).filter(Boolean));
-      if (p.data && p.data.data) setLocal(K.prof, p.data.data);
-      if (s.data) setLocal(K.sum, s.data.map(r => r.data).filter(Boolean));
+      const d = await api('pull');
+      if (d.availability) setLocal(K.avail, d.availability);
+      if (Array.isArray(d.meetings)) setLocal(K.meet, d.meetings);
+      if (Array.isArray(d.boardings)) setLocal(K.board, d.boardings);
+      if (d.profile) setLocal(K.prof, d.profile);
+      if (Array.isArray(d.summaries)) setLocal(K.sum, d.summaries);
       emit();
     } catch (e) {}
   }
 
-  /* ---------- זריעה ראשונית אם השרת ריק ---------- */
+  /* ---------- זריעה ראשונית של נתונים מקומיים לפנסיון החדש (בעלים) ---------- */
   async function seedIfEmpty() {
-    if (!sb) return;
+    if (!isOwnerPage()) return;
     try {
-      const a = await sb.from('availability').select('id').eq('id', KENNEL_ID).maybeSingle();
-      if (!a.data) await pushAvail(getLocal(K.avail, null) || S.availability());
-      const m = await sb.from('meetings').select('id').eq('kennel', KENNEL_ID).limit(1);
-      if (m.data && m.data.length === 0) { for (const rec of getLocal(K.meet, [])) await pushInsert('meetings', rec); }
-      const b = await sb.from('boardings').select('id').eq('kennel', KENNEL_ID).limit(1);
-      if (b.data && b.data.length === 0) { for (const rec of getLocal(K.board, [])) await pushInsert('boardings', rec); }
-      const s = await sb.from('summaries').select('id').eq('kennel', KENNEL_ID).limit(1);
-      if (s.data && s.data.length === 0) { for (const rec of getLocal(K.sum, [])) await pushInsert('summaries', rec); }
+      const d = await api('pull');
+      if (!d.availability) await api('set_availability', { config: getLocal(K.avail, null) || S.availability() });
+      if (!d.profile && getLocal(K.prof, null)) await api('set_profile', { data: getLocal(K.prof, {}) });
+      if (!d.meetings || !d.meetings.length) { for (const rec of getLocal(K.meet, [])) await api('upsert', { table: 'meetings', rec: rec }); }
+      if (!d.boardings || !d.boardings.length) { for (const rec of getLocal(K.board, [])) await api('upsert', { table: 'boardings', rec: rec }); }
+      if (!d.summaries || !d.summaries.length) { for (const rec of getLocal(K.sum, [])) await api('save_summary', { rec: rec }); }
     } catch (e) {}
   }
 
-  /* ---------- זמן אמת ---------- */
-  let MYID = (S.customerId ? S.customerId() : null);
-  async function sendCustomerMessage(customerId, id, text) {
-    if (!sb || !customerId) return;
-    try { await sb.from('customer_messages').insert({ id: id, customer_id: customerId, text: text }); } catch (e) {}
-  }
-
-  function subscribe() {
-    if (!sb) return;
+  /* ---------- תיבת דואר של הלקוח ---------- */
+  async function pollInbox() {
+    if (isOwnerPage() || !ready || !MYID) return;
     try {
-      sb.channel('kennel-' + KENNEL_ID)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, pull)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'boardings' }, pull)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'availability' }, pull)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'kennel_profile' }, pull)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'summaries' }, pull)
-        .subscribe();
+      const d = await api('inbox');
+      (d.messages || []).forEach(mm => { if (mm && mm.text) S.pushCustomerMsg(mm.text, mm.id); });
+      document.dispatchEvent(new CustomEvent('boardog:inbox'));
     } catch (e) {}
-    // הודעות מהבעלים ללקוח הזה (לפי מזהה הלקוח) — מגיעות בזמן אמת גם בין מכשירים
-    if (MYID) {
-      try {
-        sb.channel('cust-' + MYID)
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'customer_messages', filter: 'customer_id=eq.' + MYID }, (payload) => {
-            const row = payload.new || {};
-            if (row.text) { S.pushCustomerMsg(row.text, row.id); document.dispatchEvent(new CustomEvent('boardog:inbox')); }
-          })
-          .subscribe();
-      } catch (e) {}
-    }
+  }
+  function sendCustomerMessage(customerId, id, text) { return api('send_customer_message', { customerId: customerId, id: id, text: text }).catch(() => {}); }
+
+  async function clearAll() {
+    [K.meet, K.board, K.sum].forEach(k => setLocal(k, []));
+    emit();
+    try { await api('clear'); } catch (e) {}
   }
 
-  /* ---------- רשתות ביטחון לרענון (משלימות את ה-realtime) ---------- */
+  /* ---------- רשתות ביטחון (polling — אין realtime בלי anon) ---------- */
   function startAutoRefresh() {
-    // חזרה לטאב / פוקוס → משיכה מיידית (מושלם למעבר בין טאב הבעלים לטאב הלקוח)
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
-    window.addEventListener('focus', pull);
-    // מרפא-עצמי: משיכה תקופתית אם ה-realtime החמיץ אירוע
-    setInterval(() => { if (!document.hidden) pull(); }, 20000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { pull(); pollInbox(); } });
+    window.addEventListener('focus', () => { pull(); pollInbox(); });
+    setInterval(() => { if (!document.hidden) { pull(); pollInbox(); } }, 15000);
   }
 
   /* ---------- קביעת מזהה הפנסיון (multi-tenancy) ---------- */
-  const isOwnerPage = () => !!document.getElementById('owner-app');
   function ownerKennelId() {
-    try {
-      const u = JSON.parse(localStorage.getItem('boardog.owner') || 'null');
-      return (u && u.sub) ? ('k_' + u.sub) : null;
-    } catch (e) { return null; }
+    try { const u = JSON.parse(localStorage.getItem('boardog.owner') || 'null'); return (u && u.sub) ? ('k_' + u.sub) : null; } catch (e) { return null; }
   }
   function resolveKennelId() {
-    if (isOwnerPage()) return ownerKennelId(); // צד בעלים: לפי חשבון Google המחובר
-    // צד לקוח: פרמטר בכתובת (?k=) → זיכרון → אותו מכשיר שבו הבעלים מחובר → ברירת מחדל
+    if (isOwnerPage()) return ownerKennelId();
     let k = null;
     try { k = new URLSearchParams(location.search).get('k'); } catch (e) {}
     if (k) { try { localStorage.setItem('boardog.custKennel', k); } catch (e) {} return k; }
@@ -164,39 +128,23 @@
   }
 
   function startWith(kid) {
-    if (sb || !kid) return; // כבר אותחל / אין מזהה עדיין
-    KENNEL_ID = kid;
+    if (ready || !kid) return;
+    KENNEL_ID = kid; ready = true;
     if (window.BoarDogCloud) window.BoarDogCloud.kennelId = kid;
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: false } });
-    seedIfEmpty().then(pull).then(() => { subscribe(); startAutoRefresh(); });
+    seedIfEmpty().then(pull).then(() => { startAutoRefresh(); pollInbox(); });
   }
 
   function init() {
-    if (!window.supabase || !window.supabase.createClient) return; // אין רשת/CDN – ממשיכים מקומית
     const kid = resolveKennelId();
     if (kid) startWith(kid);
-    // בצד הבעלים לפני התחברות — מחכים לאירוע ההתחברות ואז מאתחלים
     else document.addEventListener('boardog:owner-auth', () => startWith(resolveKennelId()));
   }
-  // ניקוי מלא של היומן (פגישות, שהיות, דוחות) — מקומי + שרת. זמינות ומאפיינים נשמרים.
-  async function clearAll() {
-    [K.meet, K.board, K.sum].forEach(k => setLocal(k, []));
-    emit();
-    if (sb) {
-      try {
-        await sb.from('meetings').delete().eq('kennel', KENNEL_ID);
-        await sb.from('boardings').delete().eq('kennel', KENNEL_ID);
-        await sb.from('summaries').delete().eq('kennel', KENNEL_ID);
-      } catch (e) {}
-    }
-  }
 
-  // קישור לצד הלקוח עם מזהה הפנסיון (לשיתוף / לבדיקה בין מכשירים)
   function customerLink() {
     const base = location.href.replace(/owner\.html.*$/, 'index.html').replace(/[?#].*$/, '');
     return KENNEL_ID ? (base + '?k=' + encodeURIComponent(KENNEL_ID)) : '';
   }
-  // חשיפה לרענון יזום + שליחת הודעה ללקוח + ניקוי יומן (מדשבורד הבעלים)
+
   window.BoarDogCloud = { refresh: pull, sendCustomerMessage: sendCustomerMessage, clearAll: clearAll, kennelId: KENNEL_ID, customerLink: customerLink };
   document.addEventListener('DOMContentLoaded', init);
 })();
