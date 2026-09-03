@@ -10,6 +10,7 @@
   const CLIENT_ID = (global.BoarDogGCal && global.BoarDogGCal.clientId && global.BoarDogGCal.clientId())
     || '372588686007-8qmm1i1jgtfipfmbcqrsh1g2p01tp6gb.apps.googleusercontent.com';
   const KEY = 'boardog.owner';
+  const DATA_URL = 'https://boardog-data.shaydadon.workers.dev';
 
   const get = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } };
   const set = (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} };
@@ -52,16 +53,38 @@
     if (!resp || !resp.credential) return;
     const u = decode(resp.credential);
     const prev = get() || {};
-    const acc = { email: u.email || prev.email || '', name: u.name || prev.name || '', picture: u.picture || prev.picture || '', sub: u.sub || prev.sub || '', token: resp.credential, exp: u.exp || 0 };
+    const acc = { email: u.email || prev.email || '', name: u.name || prev.name || '', picture: u.picture || prev.picture || '', sub: u.sub || prev.sub || '', token: resp.credential, exp: u.exp || 0, sess: prev.sess || '', sessExp: prev.sessExp || 0 };
     set(acc);
     showApp(acc);
+    // החלפת טוקן Google בטוקן סשן ארוך-טווח (30 יום) — פעם אחת בהתחברות
+    exchangeSession(resp.credential).then(function () { document.dispatchEvent(new CustomEvent('boardog:owner-token')); });
     document.dispatchEvent(new CustomEvent('boardog:owner-token'));
   }
-  // טוקן Google תקף (לאימות מול שרת הנתונים). null אם פג/חסר.
+  // החלפת טוקן Google בטוקן סשן חתום מהשרת (מבטל את מגבלת השעה של Google)
+  async function exchangeSession(googleToken) {
+    try {
+      const r = await fetch(DATA_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + googleToken }, body: JSON.stringify({ action: 'session' }) });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d && d.token) { const u = get() || {}; u.sess = d.token; u.sessExp = d.exp || 0; set(u); }
+    } catch (e) {}
+  }
+  const valid = (exp) => exp && (exp * 1000 > Date.now() + 60000);
+  // הטוקן לאימות מול השרת: מעדיפים סשן ארוך-טווח, נופלים לטוקן Google תקף.
   function token() {
     const u = get();
-    if (u && u.token && u.exp && (u.exp * 1000 > Date.now() + 60000)) return u.token;
+    if (u && u.sess && valid(u.sessExp)) return u.sess;
+    if (u && u.token && valid(u.exp)) return u.token;
     return null;
+  }
+  // מוודא שיש סשן פעיל: אם הסשן תקף — סיום; אם יש טוקן Google תקף — החלפה;
+  // אחרת — רענון שקט (One Tap), וכמוצא אחרון הצגת מסך הכניסה מחדש.
+  async function ensureSession() {
+    const u = get();
+    if (u && u.sess && valid(u.sessExp)) return;              // סשן תקף — הכול טוב
+    if (u && u.token && valid(u.exp)) { await exchangeSession(u.token); return; } // החלפה
+    refresh();                                                 // ניסיון שקט
+    setTimeout(function () { if (!token()) showLogin(); }, 4000); // נכשל — כניסה מחדש
   }
   // רענון שקט של הטוקן (One Tap) — נקרא תקופתית וכשהטוקן עומד לפוג
   function refresh() {
@@ -85,8 +108,8 @@
     if (so) so.addEventListener('click', signOut);
     if (get()) {
       showApp(get());
-      if (!token()) refresh();                 // טוקן פג — רענון שקט
-      setInterval(function () { if (!token()) refresh(); }, 5 * 60 * 1000);
+      ensureSession();                          // סשן תקף / החלפה / כניסה מחדש
+      setInterval(function () { if (!token()) ensureSession(); }, 5 * 60 * 1000);
     } else showLogin();
   });
 })(window);

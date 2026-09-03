@@ -40,8 +40,35 @@ async function sbWrite(env, method, path, body, prefer) {
 // אימות הבעלים לפי טוקן Google (ID token) → מזהה המשתמש (sub).
 // עקבי עם ה-multi-tenancy בצד הלקוח (k_<google sub>).
 const DEFAULT_CLIENT_ID = '372588686007-8qmm1i1jgtfipfmbcqrsh1g2p01tp6gb.apps.googleusercontent.com';
+
+// ---- טוקן סשן חתום (HMAC) — ארוך-טווח, מחליף את ה-ID token של Google ----
+// Google ID token פג אחרי שעה ואי אפשר לרענן בשקט; לכן אחרי אימות ראשוני
+// אנחנו מנפיקים טוקן משלנו (30 יום), חתום עם service_role (סוד שרת בלבד).
+const b64url = (buf) => btoa(String.fromCharCode.apply(null, new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64urlStr = (s) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64url = (s) => atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+async function hmacSign(env, data) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.SUPABASE_SERVICE_ROLE), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64url(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data)));
+}
+async function mintSession(env, sub) {
+  const payload = b64urlStr(JSON.stringify({ sub: sub, exp: Math.floor(Date.now() / 1000) + 30 * 24 * 3600 }));
+  return 's.' + payload + '.' + await hmacSign(env, payload);
+}
+async function verifySession(env, tok) {
+  try {
+    const parts = tok.split('.');
+    if (parts[0] !== 's' || parts.length !== 3) return null;
+    if (await hmacSign(env, parts[1]) !== parts[2]) return null;   // חתימה תקפה
+    const p = JSON.parse(fromB64url(parts[1]));
+    if (!p.exp || Math.floor(Date.now() / 1000) > Number(p.exp)) return null; // לא פג
+    return p.sub || null;
+  } catch (e) { return null; }
+}
+
 async function verifyOwner(env, token) {
   if (!token) return null;
+  if (token.slice(0, 2) === 's.') return await verifySession(env, token); // טוקן הסשן שלנו
   try {
     const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(token));
     if (!r.ok) return null;
@@ -72,6 +99,14 @@ export default {
     if (!kennel) return json({ error: 'missing kennel' }, 400, origin);
     const enc = encodeURIComponent(kennel);
     const action = body.action;
+
+    // ---------- החלפת טוקן Google בטוקן סשן ארוך-טווח ----------
+    // הלקוח שולח טוקן Google תקף (Bearer) פעם אחת ומקבל טוקן סשן (30 יום).
+    if (action === 'session') {
+      if (!isOwner) return json({ error: 'unauthorized' }, 401, origin);
+      const tok = await mintSession(env, ownerId);
+      return json({ token: tok, sub: ownerId, exp: Math.floor(Date.now() / 1000) + 30 * 24 * 3600 }, 200, origin);
+    }
 
     // ---------- קריאה ----------
     if (action === 'pull') {
