@@ -248,9 +248,23 @@
     document.getElementById('bd-connect-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
   }
 
+  // בידוד דיירים: localStorage משותף בין חשבונות Google באותו דפדפן. אם המטמון
+  // המקומי שייך לפנסיון אחר (החלפת חשבון/קישור) — מנקים אותו לגמרי לפני סנכרון,
+  // אחרת דייר אחד יראה (ואף יעלה לשרת) את הנתונים של דייר אחר.
+  function scopeLocalToKennel(kid) {
+    let prev = null;
+    try { prev = localStorage.getItem('boardog.localKennel'); } catch (e) {}
+    if (prev && prev !== kid) {
+      [K.avail, K.meet, K.board, K.prof, K.sum, OUTBOX].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+      firstPull = true;
+    }
+    try { localStorage.setItem('boardog.localKennel', kid); } catch (e) {}
+  }
+
   function startWith(kid) {
     if (ready || !kid) return;
     KENNEL_ID = kid; ready = true;
+    scopeLocalToKennel(kid);   // בידוד דיירים — לפני כל סנכרון
     if (window.BoarDogCloud) window.BoarDogCloud.kennelId = kid;
     // בדף הבעלים ממתינים לטוקן תקף לפני זריעה, אחרת הכתיבה הראשונה נדחית.
     // reconcileLocal רץ לפני pull — תופס רשומות מקומיות תקועות לפני שהמשיכה דורסת.
