@@ -8,6 +8,10 @@
   'use strict';
 
   const DATA_URL = 'https://boardog-data.shaydadon.workers.dev';
+  // פנסיון ברירת המחדל של הפריסה הזו (התקנת פנסיון יחיד): הלקוח/ה-PWA ייכנסו
+  // אליו אוטומטית בלי מסך חיבור. לפריסה רב-דיירית (מכירה) — רוקן את הערך ('')
+  // ואז לקוח בלי קישור ?k= יראה מסך "התחברות לפנסיון".
+  const DEFAULT_KENNEL = 'k_111331881799600698826';
   const K = { avail: 'boardog.availability', meet: 'boardog.meetings', board: 'boardog.boardings', prof: 'boardog.profile', sum: 'boardog.summaries' };
   const S = window.BoarDogStore;
   if (!S) return;
@@ -204,7 +208,8 @@
     if (own) return own;
     // 3) הקישור האחרון ששימש במכשיר הזה (נדבק אחרי חיבור ראשון)
     try { k = localStorage.getItem('boardog.custKennel'); } catch (e) {}
-    return k || null;   // אין נפילה שקטה לפנסיון ברירת מחדל — מציגים מסך חיבור
+    // ברירת מחדל של הפריסה (פנסיון יחיד) אם מוגדרת; אחרת null → מסך חיבור
+    return k || DEFAULT_KENNEL || null;
   }
 
   // חילוץ מזהה פנסיון מקישור מלא / ?k=... / קוד גולמי (k_...)
