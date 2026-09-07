@@ -347,7 +347,7 @@
       description: $('#prof-desc').value.trim(),
       capacity: (cap > 0 ? cap : undefined)
     }));
-    const sub = $('#oh-sub'); if (sub) sub.textContent = kName() + ' · ' + kOwner(); // רענון הכותרת
+    updateHeader(); // רענון הכותרת (מציג שם רק אחרי שהוגדר)
     toast('המאפיינים נשמרו ✓ הבוט ישתמש בהם');
   }
   async function analyzeProfile() {
@@ -544,8 +544,77 @@
     el.textContent = msg; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 1800);
   }
 
+  /* ---------- הצטרפות (onboarding) של בעלים חדש ---------- */
+  // "מוגדר" = הוזן שם פנסיון. עד אז לא מציגים שמות ברירת מחדל בכותרת,
+  // ומפנים את הבעלים למסך המאפיינים עם הסבר מונפש.
+  const hasProfile = () => !!((S.profile() || {}).kennelName || '').trim();
+  function updateHeader() {
+    const sub = $('#oh-sub');
+    if (sub) sub.textContent = hasProfile() ? (kName() + ' · ' + kOwner()) : '';
+  }
+  function openTab(name) {
+    document.querySelectorAll('.otab').forEach(x => x.classList.toggle('on', x.dataset.otab === name));
+    document.querySelectorAll('.opanel').forEach(p => { p.hidden = p.dataset.panel !== name; });
+    if (name === 'cal') renderCalendar();
+    if (name === 'profile') loadProfile();
+    if (name === 'revenue') renderRevenue();
+    if (name === 'ask') renderAiUsage();
+  }
+  let landed = false;
+  function decideLanding() {
+    if (landed) return;
+    const app = document.getElementById('owner-app');
+    if (app && app.hidden) return;          // עדיין לא מחובר — נחכה
+    landed = true;
+    updateHeader();
+    if (!hasProfile()) { openTab('profile'); showOnboarding(); }  // חדש → מאפיינים + הסבר
+  }
+  function showOnboarding() {
+    if (document.getElementById('bd-onboard')) return;
+    if (!document.getElementById('bd-onboard-style')) {
+      const st = document.createElement('style');
+      st.id = 'bd-onboard-style';
+      st.textContent =
+        '#bd-onboard{position:fixed;inset:0;z-index:9998;background:rgba(7,42,38,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px}' +
+        '#bd-onboard .ob-card{max-width:400px;width:100%;background:#fff;border-radius:20px;padding:26px 22px;box-shadow:0 18px 60px rgba(0,0,0,.3);text-align:center;animation:ob-pop .35s ease}' +
+        '@keyframes ob-pop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}' +
+        '#bd-onboard .ob-logo{width:76px;height:76px;border-radius:18px;object-fit:cover;margin:0 auto 12px;display:block}' +
+        '#bd-onboard h2{margin:0 0 4px;font-size:21px;color:#075e54}' +
+        '#bd-onboard .ob-lead{margin:0 0 16px;color:#555;font-size:14px}' +
+        '#bd-onboard .ob-step{display:flex;gap:12px;align-items:flex-start;text-align:right;background:#f4faf8;border:1px solid #e2efeb;border-radius:14px;padding:12px 14px;margin-bottom:10px;opacity:0;animation:ob-in .5s ease forwards}' +
+        '#bd-onboard .ob-step:nth-child(1){animation-delay:.15s}#bd-onboard .ob-step:nth-child(2){animation-delay:.35s}#bd-onboard .ob-step:nth-child(3){animation-delay:.55s}' +
+        '@keyframes ob-in{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}' +
+        '#bd-onboard .ob-ic{font-size:24px;line-height:1.2;flex:0 0 auto;animation:ob-bob 2.4s ease-in-out infinite}' +
+        '#bd-onboard .ob-step:nth-child(2) .ob-ic{animation-delay:.3s}#bd-onboard .ob-step:nth-child(3) .ob-ic{animation-delay:.6s}' +
+        '@keyframes ob-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}' +
+        '#bd-onboard .ob-t{font-weight:700;color:#0b3b34;font-size:15px;margin-bottom:2px}' +
+        '#bd-onboard .ob-d{color:#5a6b67;font-size:13px;line-height:1.45}' +
+        '#bd-onboard .ob-go{width:100%;margin-top:8px;padding:13px;background:#075e54;color:#fff;border:0;border-radius:13px;font-size:16px;font-weight:700;cursor:pointer;animation:ob-pulse 2s ease-in-out infinite}' +
+        '@keyframes ob-pulse{0%,100%{box-shadow:0 0 0 0 rgba(7,94,84,.35)}50%{box-shadow:0 0 0 8px rgba(7,94,84,0)}}' +
+        '#bd-onboard .ob-skip{margin-top:10px;background:none;border:0;color:#8a9793;font-size:13px;cursor:pointer;text-decoration:underline}';
+      document.head.appendChild(st);
+    }
+    const wrap = document.createElement('div');
+    wrap.id = 'bd-onboard';
+    wrap.innerHTML =
+      '<div class="ob-card">' +
+      '<img class="ob-logo" src="assets/logo.jpg" alt="" onerror="this.style.display=\'none\'"/>' +
+      '<h2>ברוכים הבאים ל־BoarDog 🐾</h2>' +
+      '<p class="ob-lead">שלושה צעדים קצרים ותהיו מוכנים לקבל לקוחות:</p>' +
+      '<div class="ob-step"><div class="ob-ic">🏠</div><div><div class="ob-t">שם הפנסיון והבעלים</div><div class="ob-d">כדי שהצ\'אטבוט ידבר בשמכם מול הלקוחות.</div></div></div>' +
+      '<div class="ob-step"><div class="ob-ic">✍️</div><div><div class="ob-t">תיאור הפנסיון</div><div class="ob-d">מחירים, תפוסה ותנאים. לחצו "✨ נתח עם AI" והוא יסדר הכול לבד.</div></div></div>' +
+      '<div class="ob-step"><div class="ob-ic">🔗</div><div><div class="ob-t">קישור הלקוח</div><div class="ob-d">שתפו אותו בוואטסאפ — כל פנייה תיכנס ישירות ליומן שלכם.</div></div></div>' +
+      '<button class="ob-go" id="bd-onboard-go">בוא נתחיל ←</button>' +
+      '<button class="ob-skip" id="bd-onboard-skip">אחר כך</button>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    const focusName = () => { const f = $('#prof-kennel'); if (f) { f.focus(); f.scrollIntoView({ block: 'center', behavior: 'smooth' }); } };
+    wrap.querySelector('#bd-onboard-go').addEventListener('click', () => { wrap.remove(); focusName(); });
+    wrap.querySelector('#bd-onboard-skip').addEventListener('click', () => wrap.remove());
+  }
+
   function init() {
-    $('#oh-sub').textContent = kName() + ' · ' + kOwner();
+    updateHeader();
     initTabs();
     renderAvail();
     renderCalendar();
@@ -575,10 +644,15 @@
     scanNew(true); // זריעה ראשונית ללא התראה
     // רענון חי + התראה כשמגיעה הזמנה חדשה מהשרת (זמן אמת)
     document.addEventListener('boardog:sync', () => {
-      renderCalendar(); scanNew(false);
+      renderCalendar(); scanNew(false); updateHeader(); decideLanding();
       const rev = document.querySelector('.opanel[data-panel="revenue"]');
       if (rev && !rev.hidden) renderRevenue();
     });
+    // כשהבעלים מתחבר — מרעננים כותרת (ההחלטה לאן להגיע נעשית אחרי הסנכרון,
+    // כדי לא להפנות בטעות בעלים ותיק שהמאפיינים שלו עדיין לא נמשכו מהשרת)
+    document.addEventListener('boardog:owner-auth', updateHeader);
+    // רשת ביטחון: אם לא הגיע סנכרון (למשל לא מקוון) — החלטה אחרי השהייה קצרה
+    setTimeout(decideLanding, 3000);
   }
   document.addEventListener('DOMContentLoaded', init);
 })();
