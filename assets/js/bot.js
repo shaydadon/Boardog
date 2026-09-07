@@ -168,12 +168,13 @@
     '(א) אם חזר boarding — השהייה כבר שוריינה בתאריכים start–end. אם הלקוח שואל אם התאריכים שוריינו, אשר/י לו: "כן, השהייה של {dog} שוריינה מ-start עד end". אל תבקש/י תאריכים מחדש ואל תקרא/י שוב ל-book_boarding, אלא אם הלקוח מבקש במפורש תאריכים חדשים או שינוי. ' +
     '(ב) אחרת אם חזר meeting — פגישת ההיכרות כבר נקבעה (ל-date בשעה time). אם יש requested_start/requested_end, אלה התאריכים שהלקוח ביקש והם ממתינים לאישור בפגישה. אם הלקוח שואל אם התאריכים שוריינו, הסבר/י בעדינות: השריון הסופי של תאריכי השהייה מתבצע בפגישת ההיכרות עצמה — וציין/י את התאריכים שביקש (אם יש) ואת מועד הפגישה. אל תתחיל/י תשאול מחדש. ' +
     '(ג) רק אם אין meeting ואין boarding — בקש/י את תאריכי השהייה וקרא/י ל-book_boarding (start_date, end_date, dog_name, owner_name) בפורמט YYYY-MM-DD, ואז save_summary.\n' +
-    '• אם לקוח חדש: אסוף/אספי שם כלב, מין (זכר/נקבה), גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, אלרגיות, בריאות/תרופות, ' +
+    '• אם לקוח חדש: קודם שאל/י את שם הכלב. ' +
+    'מיד אחרי שם הכלב — שאל/י לאילו תאריכים צריך את השהייה (התחלה וסוף), וקרא/י ל-check_dates (start_date, end_date, owner_name, dog_name) בפורמט YYYY-MM-DD כדי לבדוק זמינות *לפני* התשאול המלא — כדי לא לבזבז שאלות אם אין מקום. ' +
+    'אם full=true או spots_left=0 (הפנסיון מלא באותם תאריכים) — הודע/י ללקוח בעדינות שאין מקום בתאריכים האלה, הצע/י לבדוק תאריכים אחרים, וקרא/י שוב ל-check_dates עד שיימצאו תאריכים עם מקום. אל תמשיך/י לתשאול כל עוד אין תאריכים פנויים. ' +
+    'רק כשיש מקום — אשר/י בקצרה ("מעולה, יש מקום בתאריכים האלה") והמשך/י לאסוף בזרימה טבעית, שאלה אחת בכל פעם (לא כרשימה): מין (זכר/נקבה), גזע, גיל, גודל, עיקור/סירוס, חיסונים, פרעושים/קרציות, אלרגיות, בריאות/תרופות, התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז. ' +
     'שאל/י את המין לפני שאלת העיקור/סירוס, והתאם/י את הניסוח למין: לזכר "האם הוא מסורס?", לנקבה "האם היא מעוקרת?". ' +
-    'התאמה לכלבים אחרים, עבר תוקפנות, אוכל ולו"ז — הכול בזרימה טבעית, שאלה אחת בכל פעם, לא כרשימה. ' +
-    'ואז קרא/י ל-get_available_slots והצג/י 3–5 מועדים. ' +
+    'ואז קרא/י ל-get_available_slots והצג/י 3–5 מועדים לפגישת היכרות. ' +
     'כשהלקוח בוחר מועד — גם בניסוח חופשי (למשל "חמישי ב-6" או "השני ב-4") — התאם/י אותו למועד המתאים מהרשימה שהצגת (שים/י לב: "ב-6" פירושו השעה 18:00, "ב-4" זה 16:00 וכו\'), אשר/י בקצרה וקרא/י מיד ל-book_meeting (slot_id, dog_name, owner_name). בקש/י הבהרה רק אם באמת אין מועד מתאים. ' +
-    'לאחר קביעת פגישת ההיכרות ללקוח חדש: שאל/י לאילו תאריכים הוא צריך את השהייה, וקרא/י ל-check_dates (start_date, end_date, owner_name) בפורמט YYYY-MM-DD כדי לבדוק ביומן אם פנוי וכמה כלבים כבר בטווח — ומסור/י לו את התוצאה. ' +
     '*אל תשריין/י תאריכי שהייה ואל תקרא/י ל-book_boarding ללקוח חדש.* ' +
     'ואז אמור/י בדיוק: "שיריון תאריכי השהייה יבוצע לאחר פגישת ההיכרות, אחרי שנכיר את ' + '{dogName}' + ' ונראה שהכל מסתדר יפה." (החלף/י {dogName} בשם הכלב), קרא/י ל-save_summary וסיים/י בברכה.\n' +
     'הלקוח יכול לשאול שאלות פתוחות בכל שלב — ענה/י לפי "מידע על הפנסיון" למטה ואל תמציא/י עובדות.\n\nמידע על הפנסיון:\n' + K.knowledge();
@@ -221,6 +222,7 @@
     } catch (e) {}
   }
 
+  let pendingRequested = null; // תאריכי שהייה שנבדקו לפני קביעת הפגישה — יוצמדו לפגישה
   async function runTool(name, input) {
     if (name === 'lookup_customer') {
       const prev = S.summaryForOwner ? S.summaryForOwner(input.owner_name) : null;
@@ -243,7 +245,9 @@
     if (name === 'book_meeting') {
       const slot = S.findSlot(input.slot_id);
       if (!slot) return { ok: false, reason: 'מועד לא תקין — קרא שוב ל-get_available_slots' };
-      S.addMeeting({ date: slot.date, time: slot.time, dogName: input.dog_name || '', ownerName: input.owner_name || '', customerId: S.customerId() });
+      const rec = S.addMeeting({ date: slot.date, time: slot.time, dogName: input.dog_name || '', ownerName: input.owner_name || '', customerId: S.customerId() });
+      // הצמדת תאריכי השהייה שנבדקו קודם (הזרימה החדשה בודקת תאריכים לפני קביעת הפגישה)
+      if (rec && pendingRequested) { rec.requestedStart = pendingRequested.start; rec.requestedEnd = pendingRequested.end; if (S.updateMeeting) S.updateMeeting(rec); }
       return { ok: true, booked: slot.label };
     }
     if (name === 'check_dates') {
@@ -267,6 +271,8 @@
       const mine = S.meetings().filter(m => String(m.ownerName || '').trim().toLowerCase() === owner);
       const last = mine[mine.length - 1];
       if (last) { last.requestedStart = rng.start; last.requestedEnd = rng.end; S.updateMeeting(last); }
+      // אם נבדק לפני קביעת הפגישה — נשמור את הטווח כדי להצמידו לפגישה כשתיקבע
+      pendingRequested = { start: rng.start, end: rng.end };
       const dog = input.dog_name || 'הכלב שלך';
       const spots = Math.max(0, cap - totalPeak - (myBrd ? 0 : 1));
       const answer = othersPeak > 0
@@ -275,6 +281,7 @@
       return {
         start_date: rng.start, end_date: rng.end,
         other_dogs: othersPeak, total_dogs_with_this_dog: othersPeak + 1, capacity: cap, spots_left: spots,
+        full: spots <= 0,
         answer_he: answer
       };
     }
