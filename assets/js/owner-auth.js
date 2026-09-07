@@ -53,7 +53,11 @@
     if (!resp || !resp.credential) return;
     const u = decode(resp.credential);
     const prev = get() || {};
-    const acc = { email: u.email || prev.email || '', name: u.name || prev.name || '', picture: u.picture || prev.picture || '', sub: u.sub || prev.sub || '', token: resp.credential, exp: u.exp || 0, sess: prev.sess || '', sessExp: prev.sessExp || 0 };
+    // החלפת חשבון: אם ה-sub שונה מהקודם — לא לגרור סשן ישן (הוא של חשבון אחר,
+    // אחרת השרת ימשוך את הפנסיון הלא נכון). מנקים גם מטמון נתונים של הדייר הקודם.
+    const sameUser = u.sub && prev.sub && u.sub === prev.sub;
+    if (!sameUser && prev.sub) { try { localStorage.removeItem('boardog.localKennel'); } catch (e) {} }
+    const acc = { email: u.email || '', name: u.name || '', picture: u.picture || '', sub: u.sub || prev.sub || '', token: resp.credential, exp: u.exp || 0, sess: sameUser ? (prev.sess || '') : '', sessExp: sameUser ? (prev.sessExp || 0) : 0 };
     set(acc);
     showApp(acc);
     // החלפת טוקן Google בטוקן סשן ארוך-טווח (30 יום) — פעם אחת בהתחברות
@@ -70,18 +74,23 @@
     } catch (e) {}
   }
   const valid = (exp) => exp && (exp * 1000 > Date.now() + 60000);
-  // הטוקן לאימות מול השרת: מעדיפים סשן ארוך-טווח, נופלים לטוקן Google תקף.
+  // ה-sub שחתום בתוך טוקן הסשן (s.<payload>.<sig>)
+  function sessSub(sess) {
+    try { return JSON.parse(atob(sess.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub || null; } catch (e) { return null; }
+  }
+  // סשן תקף רק אם לא פג *וגם* ה-sub שלו תואם לחשבון המחובר (הגנה מסשן ישן)
+  const sessOk = (u) => u && u.sess && valid(u.sessExp) && sessSub(u.sess) === u.sub;
+  // הטוקן לאימות מול השרת: מעדיפים סשן תקף ותואם, נופלים לטוקן Google תקף.
   function token() {
     const u = get();
-    if (u && u.sess && valid(u.sessExp)) return u.sess;
+    if (sessOk(u)) return u.sess;
     if (u && u.token && valid(u.exp)) return u.token;
     return null;
   }
-  // מוודא שיש סשן פעיל: אם הסשן תקף — סיום; אם יש טוקן Google תקף — החלפה;
-  // אחרת — רענון שקט (One Tap), וכמוצא אחרון הצגת מסך הכניסה מחדש.
+  // מוודא שיש סשן פעיל ותואם לחשבון; אחרת מחליף/מרענן.
   async function ensureSession() {
     const u = get();
-    if (u && u.sess && valid(u.sessExp)) return;              // סשן תקף — הכול טוב
+    if (sessOk(u)) return;                                     // סשן תקף ותואם — הכול טוב
     if (u && u.token && valid(u.exp)) { await exchangeSession(u.token); return; } // החלפה
     refresh();                                                 // ניסיון שקט
     setTimeout(function () { if (!token()) showLogin(); }, 4000); // נכשל — כניסה מחדש
