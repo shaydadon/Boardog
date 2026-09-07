@@ -49,7 +49,12 @@
   function clearSession() { try { localStorage.removeItem(SESS); } catch (e) {} }
 
   const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const fmt = s => esc(s).replace(/\*(.+?)\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+  // ניקוי תווים חריגים שהמודל מוסיף לפעמים: תווי בקרה/כיווניות בלתי-נראים,
+  // ומקף (רגיל/רך/יוניקוד) שנתקע בין שתי אותיות עבריות ושובר את המילה בתצוגה.
+  const clean = s => String(s == null ? '' : s)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u00AD\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+    .replace(/([\u0590-\u05FF])[\u00AD\u2010-\u2015]([\u0590-\u05FF])/g, '$1$2');
+  const fmt = s => esc(clean(s)).replace(/\*(.+?)\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
   const now = () => { const d = new Date(); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); };
 
   function addMsg(text, who) {
