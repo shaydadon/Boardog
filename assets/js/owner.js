@@ -332,6 +332,7 @@
     const p = S.profile() || {};
     if ($('#prof-kennel')) $('#prof-kennel').value = p.kennelName || '';
     if ($('#prof-owner')) $('#prof-owner').value = p.ownerName || '';
+    if ($('#prof-address')) $('#prof-address').value = p.address || '';
     if ($('#prof-desc')) $('#prof-desc').value = p.description || '';
     if ($('#prof-cap')) $('#prof-cap').value = p.capacity || '';
     if ($('#prof-notify')) $('#prof-notify').value = notifyUrl();
@@ -344,6 +345,7 @@
     S.setProfile(Object.assign({}, prev, {
       kennelName: ($('#prof-kennel') ? $('#prof-kennel').value.trim() : '') || undefined,
       ownerName: ($('#prof-owner') ? $('#prof-owner').value.trim() : '') || undefined,
+      address: ($('#prof-address') ? $('#prof-address').value.trim() : '') || undefined,
       description: $('#prof-desc').value.trim(),
       capacity: (cap > 0 ? cap : undefined)
     }));
